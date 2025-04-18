@@ -4,7 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { X, Plus } from "lucide-react";
+import { X, Plus, Sparkles, RefreshCw } from "lucide-react";
+import { useAIGeneration } from "@/hooks/use-ai-generation";
+import { toast } from "@/components/ui/use-toast";
 
 interface BrandStoryProps {
   data: any;
@@ -20,6 +22,7 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
   });
 
   const [newValue, setNewValue] = useState("");
+  const { generate, isGenerating } = useAIGeneration();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -52,20 +55,81 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
     onChange(updatedData);
   };
 
+  const handleGenerate = async (type: 'mission' | 'vision' | 'values') => {
+    const projectData = {
+      industry: data.industry || 'technology',
+      name: data.businessName || 'Your Business',
+      productService: data.productService || 'provides innovative solutions',
+    };
+
+    try {
+      const content = await generate(type, projectData);
+      if (content) {
+        const updatedData = { ...formData };
+        
+        if (type === 'values') {
+          // Parse values from the AI response
+          const valuesList = content
+            .split('\n')
+            .filter(line => line.trim().startsWith('-') || line.trim().startsWith('•'))
+            .map(line => line.replace(/^[-•]\s*/, '').split(':')[0].trim());
+          
+          updatedData.values = valuesList;
+        } else {
+          updatedData[type] = content;
+        }
+
+        setFormData(updatedData);
+        onChange(updatedData);
+        toast({
+          title: "Content Generated",
+          description: `Your ${type} has been generated successfully.`,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Generation Failed",
+        description: "Failed to generate content. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div className="text-center max-w-3xl mx-auto mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-3">Brand Story & Values</h1>
         <p className="text-gray-600">
-          Your brand story and values form the foundation of your brand's identity and purpose. This is what connects your audience to your brand on a deeper level.
+          Define your brand's purpose and core values. Use AI suggestions to help craft your story.
         </p>
       </div>
 
       <div className="grid gap-8 max-w-2xl mx-auto">
         <div className="space-y-2">
-          <Label htmlFor="mission">
-            Mission Statement <span className="text-red-500">*</span>
-          </Label>
+          <div className="flex justify-between items-center">
+            <Label htmlFor="mission">
+              Mission Statement <span className="text-red-500">*</span>
+            </Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleGenerate('mission')}
+              disabled={isGenerating}
+            >
+              {isGenerating ? (
+                <>
+                  <RefreshCw size={16} className="mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} className="mr-2" />
+                  Generate
+                </>
+              )}
+            </Button>
+          </div>
           <Textarea
             id="mission"
             name="mission"
@@ -80,13 +144,34 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="vision">
-            Vision Statement <span className="text-red-500">*</span>
-          </Label>
+          <div className="flex justify-between items-center">
+            <Label htmlFor="vision">
+              Vision Statement <span className="text-red-500">*</span>
+            </Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleGenerate('vision')}
+              disabled={isGenerating}
+            >
+              {isGenerating ? (
+                <>
+                  <RefreshCw size={16} className="mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} className="mr-2" />
+                  Generate
+                </>
+              )}
+            </Button>
+          </div>
           <Textarea
             id="vision"
             name="vision"
-            placeholder="What does the future look like if your brand succeeds? What change will you create?"
+            placeholder="What does the future look like if your brand succeeds?"
             value={formData.vision}
             onChange={handleChange}
             className="min-h-[100px]"
@@ -97,7 +182,28 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="values">Core Values</Label>
+          <div className="flex justify-between items-center">
+            <Label htmlFor="values">Core Values</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleGenerate('values')}
+              disabled={isGenerating}
+            >
+              {isGenerating ? (
+                <>
+                  <RefreshCw size={16} className="mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} className="mr-2" />
+                  Generate Values
+                </>
+              )}
+            </Button>
+          </div>
           <div className="flex items-center gap-2">
             <Input
               id="values"
