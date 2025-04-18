@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { GeneratedLogo } from "@/integrations/ai/ideogram";
 import { GeneratedColorPalette, Color } from "@/integrations/ai/colorPalette";
 import { 
@@ -7,7 +7,8 @@ import {
   downloadSVG, 
   convertSVGtoPNG,
   TransformedSVG,
-  SVGTransformOptions
+  SVGTransformOptions,
+  SVGPath
 } from "@/integrations/ai/svgTransformer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { 
   Download, 
   RefreshCw, 
@@ -23,8 +25,13 @@ import {
   Paintbrush, 
   FileType, 
   FileImage,
-  Palette
+  Palette,
+  Edit,
+  Save,
+  Undo,
+  Redo
 } from "lucide-react";
+import { Canvas, loadSVGFromURL, Object as FabricObject } from 'fabric';
 
 interface LogoSVGTransformerProps {
   logo: GeneratedLogo;
@@ -42,6 +49,33 @@ export const LogoSVGTransformer: React.FC<LogoSVGTransformerProps> = ({
   const [activeTab, setActiveTab] = useState("original");
   const [simplifyLevel, setSimplifyLevel] = useState(5);
   const [colorMode, setColorMode] = useState<'original' | 'monochrome' | 'custom'>('original');
+  const [threshold, setThreshold] = useState(128);
+  const [turdsize, setTurdsize] = useState(2);
+  const [alphamax, setAlphamax] = useState(1);
+  const [optCurve, setOptCurve] = useState(true);
+  const [optTolerance, setOptTolerance] = useState(0.2);
+  const [isEditing, setIsEditing] = useState(false);
+  const [history, setHistory] = useState<TransformedSVG[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fabricCanvasRef = useRef<Canvas | null>(null);
+
+  // Initialize fabric canvas when component mounts
+  useEffect(() => {
+    if (canvasRef.current) {
+      fabricCanvasRef.current = new Canvas(canvasRef.current, {
+        width: 800,
+        height: 600,
+        backgroundColor: '#ffffff'
+      });
+    }
+    return () => {
+      if (fabricCanvasRef.current) {
+        fabricCanvasRef.current.dispose();
+      }
+    };
+  }, []);
 
   // Convert the logo to SVG when the component mounts or when the logo changes
   useEffect(() => {
@@ -50,12 +84,24 @@ export const LogoSVGTransformer: React.FC<LogoSVGTransformerProps> = ({
     }
   }, [logo]);
 
-  // Generate color variants when the SVG or color palette changes
+  // Update fabric canvas when SVG changes
   useEffect(() => {
-    if (svg && colorPalette) {
-      generateColorVariants();
+    if (svg && fabricCanvasRef.current) {
+      fabricCanvasRef.current.clear();
+      // Create a blob URL from the SVG string
+      const blob = new Blob([svg.svgString], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      
+      loadSVGFromURL(url, (element: Element, options) => {
+        const objects = Array.from(element.children).map(child => {
+          return new FabricObject(child);
+        });
+        fabricCanvasRef.current?.add(...objects);
+        fabricCanvasRef.current?.renderAll();
+        URL.revokeObjectURL(url);
+      });
     }
-  }, [svg, colorPalette]);
+  }, [svg]);
 
   const handleConvertToSVG = async () => {
     setIsConverting(true);
@@ -64,7 +110,12 @@ export const LogoSVGTransformer: React.FC<LogoSVGTransformerProps> = ({
     try {
       const options: SVGTransformOptions = {
         simplifyLevel,
-        colorMode
+        colorMode,
+        threshold,
+        turdsize,
+        alphamax,
+        optCurve,
+        optTolerance
       };
 
       if (colorMode === 'custom' && colorPalette) {
@@ -73,6 +124,8 @@ export const LogoSVGTransformer: React.FC<LogoSVGTransformerProps> = ({
 
       const transformedSVG = await convertToSVG(logo.url, options);
       setSvg(transformedSVG);
+      setHistory([transformedSVG]);
+      setHistoryIndex(0);
 
       // Generate color variants if a color palette is available
       if (colorPalette) {
@@ -89,7 +142,6 @@ export const LogoSVGTransformer: React.FC<LogoSVGTransformerProps> = ({
   const generateColorVariants = () => {
     if (!svg || !colorPalette) return;
 
-    // Create different color variants based on the color palette
     const variants: TransformedSVG[] = [];
 
     // Variant 1: Original colors from the SVG
@@ -134,14 +186,11 @@ export const LogoSVGTransformer: React.FC<LogoSVGTransformerProps> = ({
       setIsConverting(true);
       const pngUrl = await convertSVGtoPNG(svgToDownload, 1024, 1024);
 
-      // Create a temporary link and trigger the download
       const link = document.createElement('a');
       link.href = pngUrl;
       link.download = `${logo.id}-${activeTab}.png`;
       document.body.appendChild(link);
       link.click();
-
-      // Clean up
       document.body.removeChild(link);
     } catch (err) {
       console.error("Error downloading PNG:", err);
@@ -163,7 +212,38 @@ export const LogoSVGTransformer: React.FC<LogoSVGTransformerProps> = ({
     handleConvertToSVG();
   };
 
-  // Helper function to get the current SVG based on the active tab
+  const handleEdit = () => {
+    setIsEditing(true);
+  };
+
+  const handleSave = () => {
+    if (fabricCanvasRef.current) {
+      const svgString = fabricCanvasRef.current.toSVG();
+      const newSvg: TransformedSVG = {
+        ...svg!,
+        svgString
+      };
+      setSvg(newSvg);
+      setHistory([...history.slice(0, historyIndex + 1), newSvg]);
+      setHistoryIndex(historyIndex + 1);
+    }
+    setIsEditing(false);
+  };
+
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      setHistoryIndex(historyIndex - 1);
+      setSvg(history[historyIndex - 1]);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyIndex < history.length - 1) {
+      setHistoryIndex(historyIndex + 1);
+      setSvg(history[historyIndex + 1]);
+    }
+  };
+
   const getCurrentSVG = (): TransformedSVG | null => {
     if (!svg) return null;
 
@@ -175,41 +255,29 @@ export const LogoSVGTransformer: React.FC<LogoSVGTransformerProps> = ({
     return colorVariants[index];
   };
 
-  // Helper function to adjust color brightness
   const adjustColorBrightness = (hex: string, percent: number): string => {
-    // Remove the # if it exists
     hex = hex.replace('#', '');
-
-    // Convert hex to RGB
     let r = parseInt(hex.substring(0, 2), 16);
     let g = parseInt(hex.substring(2, 4), 16);
     let b = parseInt(hex.substring(4, 6), 16);
 
-    // Adjust brightness
     r = Math.max(0, Math.min(255, r + (r * percent / 100)));
     g = Math.max(0, Math.min(255, g + (g * percent / 100)));
     b = Math.max(0, Math.min(255, b + (b * percent / 100)));
 
-    // Convert back to hex
     return `#${Math.round(r).toString(16).padStart(2, '0')}${Math.round(g).toString(16).padStart(2, '0')}${Math.round(b).toString(16).padStart(2, '0')}`;
   };
 
-  // Helper function to invert a color
   const invertColor = (hex: string): string => {
-    // Remove the # if it exists
     hex = hex.replace('#', '');
-
-    // Convert hex to RGB
     let r = parseInt(hex.substring(0, 2), 16);
     let g = parseInt(hex.substring(2, 4), 16);
     let b = parseInt(hex.substring(4, 6), 16);
 
-    // Invert the colors
     r = 255 - r;
     g = 255 - g;
     b = 255 - b;
 
-    // Convert back to hex
     return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
   };
 
@@ -246,19 +314,46 @@ export const LogoSVGTransformer: React.FC<LogoSVGTransformerProps> = ({
             </div>
             <div>
               <h3 className="text-lg font-semibold mb-2">SVG Version</h3>
-              <div className="border rounded-lg overflow-hidden p-4 bg-gray-50 h-full flex items-center justify-center">
+              <div className="border rounded-lg overflow-hidden p-4 bg-gray-50 h-full">
                 {isConverting ? (
-                  <div className="flex flex-col items-center justify-center text-gray-500">
+                  <div className="flex flex-col items-center justify-center text-gray-500 h-64">
                     <RefreshCw className="h-8 w-8 animate-spin mb-2" />
                     <p>Converting to SVG...</p>
                   </div>
+                ) : isEditing ? (
+                  <div className="h-64">
+                    <canvas ref={canvasRef} />
+                    <div className="flex justify-end gap-2 mt-2">
+                      <Button variant="outline" size="sm" onClick={handleUndo} disabled={historyIndex <= 0}>
+                        <Undo className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleRedo} disabled={historyIndex >= history.length - 1}>
+                        <Redo className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" onClick={handleSave}>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Changes
+                      </Button>
+                    </div>
+                  </div>
                 ) : svg ? (
-                  <div 
-                    className="w-full h-full flex items-center justify-center"
-                    dangerouslySetInnerHTML={{ __html: getCurrentSVG()?.svgString || '' }}
-                  />
+                  <div className="h-64 flex items-center justify-center">
+                    <div 
+                      className="w-full h-full flex items-center justify-center"
+                      dangerouslySetInnerHTML={{ __html: getCurrentSVG()?.svgString || '' }}
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="absolute top-2 right-2"
+                      onClick={handleEdit}
+                    >
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                  </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center text-gray-500">
+                  <div className="flex flex-col items-center justify-center text-gray-500 h-64">
                     <FileType className="h-8 w-8 mb-2" />
                     <p>SVG will appear here</p>
                   </div>
@@ -268,43 +363,111 @@ export const LogoSVGTransformer: React.FC<LogoSVGTransformerProps> = ({
           </div>
 
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="simplify-level">Simplification Level</Label>
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-500">Simple</span>
-                <Slider
-                  id="simplify-level"
-                  defaultValue={[simplifyLevel]}
-                  max={10}
-                  min={1}
-                  step={1}
-                  onValueChange={handleSimplifyChange}
-                  className="flex-1"
-                />
-                <span className="text-sm text-gray-500">Detailed</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="simplify-level">Simplification Level</Label>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-500">Simple</span>
+                  <Slider
+                    id="simplify-level"
+                    defaultValue={[simplifyLevel]}
+                    max={10}
+                    min={1}
+                    step={1}
+                    onValueChange={handleSimplifyChange}
+                    className="flex-1"
+                  />
+                  <span className="text-sm text-gray-500">Detailed</span>
+                </div>
               </div>
-              <p className="text-xs text-gray-500">
-                Adjust how simplified the SVG should be. Lower values create simpler SVGs with fewer details.
-              </p>
+
+              <div className="space-y-2">
+                <Label htmlFor="threshold">Threshold</Label>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-500">Light</span>
+                  <Slider
+                    id="threshold"
+                    defaultValue={[threshold]}
+                    max={255}
+                    min={0}
+                    step={1}
+                    onValueChange={(value) => setThreshold(value[0])}
+                    className="flex-1"
+                  />
+                  <span className="text-sm text-gray-500">Dark</span>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="color-mode">Color Mode</Label>
-              <Select value={colorMode} onValueChange={handleColorModeChange}>
-                <SelectTrigger id="color-mode">
-                  <SelectValue placeholder="Select a color mode" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="original">Original Colors</SelectItem>
-                  <SelectItem value="monochrome">Monochrome</SelectItem>
-                  <SelectItem value="custom" disabled={!colorPalette}>
-                    Custom Palette {!colorPalette && "(No palette selected)"}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-500">
-                Choose how colors should be applied to the SVG.
-              </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="turdsize">Speckle Size</Label>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-500">Small</span>
+                  <Slider
+                    id="turdsize"
+                    defaultValue={[turdsize]}
+                    max={10}
+                    min={0}
+                    step={1}
+                    onValueChange={(value) => setTurdsize(value[0])}
+                    className="flex-1"
+                  />
+                  <span className="text-sm text-gray-500">Large</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="alphamax">Corner Threshold</Label>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-500">Smooth</span>
+                  <Slider
+                    id="alphamax"
+                    defaultValue={[alphamax]}
+                    max={2}
+                    min={0}
+                    step={0.1}
+                    onValueChange={(value) => setAlphamax(value[0])}
+                    className="flex-1"
+                  />
+                  <span className="text-sm text-gray-500">Sharp</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="opt-tolerance">Curve Tolerance</Label>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-500">Loose</span>
+                  <Slider
+                    id="opt-tolerance"
+                    defaultValue={[optTolerance]}
+                    max={1}
+                    min={0}
+                    step={0.1}
+                    onValueChange={(value) => setOptTolerance(value[0])}
+                    className="flex-1"
+                  />
+                  <span className="text-sm text-gray-500">Tight</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="color-mode">Color Mode</Label>
+                <Select value={colorMode} onValueChange={handleColorModeChange}>
+                  <SelectTrigger id="color-mode">
+                    <SelectValue placeholder="Select a color mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="original">Original Colors</SelectItem>
+                    <SelectItem value="monochrome">Monochrome</SelectItem>
+                    <SelectItem value="custom" disabled={!colorPalette}>
+                      Custom Palette {!colorPalette && "(No palette selected)"}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <Button 
@@ -342,7 +505,6 @@ export const LogoSVGTransformer: React.FC<LogoSVGTransformerProps> = ({
                   <TabsTrigger value="variant-3">Inverted</TabsTrigger>
                 </TabsList>
 
-                {/* Original SVG */}
                 <TabsContent value="original" className="pt-4">
                   <div className="flex justify-center">
                     <div 
@@ -352,7 +514,6 @@ export const LogoSVGTransformer: React.FC<LogoSVGTransformerProps> = ({
                   </div>
                 </TabsContent>
 
-                {/* Color variants */}
                 {colorVariants.slice(1).map((variant, index) => (
                   <TabsContent key={`variant-${index + 1}`} value={`variant-${index + 1}`} className="pt-4">
                     <div className="flex justify-center">

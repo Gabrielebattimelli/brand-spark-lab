@@ -3,6 +3,7 @@
  */
 
 import { Color } from "./colorPalette";
+import { Potrace } from 'potrace';
 
 /**
  * Interface for SVG transformation options
@@ -11,6 +12,11 @@ export interface SVGTransformOptions {
   simplifyLevel?: number; // 1-10, higher means more simplification
   colorMode?: 'original' | 'monochrome' | 'custom';
   customColors?: Color[]; // Colors to use for custom color mode
+  threshold?: number; // 0-255, for image tracing
+  turdsize?: number; // Remove speckles of up to this size
+  alphamax?: number; // Corner threshold parameter
+  optCurve?: boolean; // Optimize curves
+  optTolerance?: number; // Curve optimization tolerance
 }
 
 /**
@@ -20,16 +26,18 @@ export interface TransformedSVG {
   id: string;
   svgString: string;
   colors: Color[];
+  paths: SVGPath[];
+}
+
+export interface SVGPath {
+  d: string;
+  fill: string;
+  stroke?: string;
+  strokeWidth?: number;
 }
 
 /**
- * Converts a raster image to SVG format
- * 
- * This function uses a combination of image processing techniques to:
- * 1. Trace the outlines of shapes in the image
- * 2. Simplify the paths for cleaner SVG
- * 3. Apply color quantization to reduce the number of colors
- * 4. Generate an optimized SVG string
+ * Converts a raster image to SVG format using Potrace
  */
 export const convertToSVG = async (
   imageUrl: string,
@@ -39,23 +47,70 @@ export const convertToSVG = async (
     console.log("Converting image to SVG:", imageUrl);
     console.log("Options:", options);
     
-    // In a real implementation, we would use a library like potrace or a service API
-    // to convert the raster image to SVG. For this demo, we'll simulate the conversion
-    // with a placeholder SVG.
+    // Load the image
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+    const image = await createImageBitmap(blob);
     
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Create a canvas to process the image
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const ctx = canvas.getContext('2d');
     
-    // Generate a simple SVG based on the options
-    const svgString = generatePlaceholderSVG(options);
+    if (!ctx) {
+      throw new Error("Could not get canvas context");
+    }
     
-    // Extract or generate colors from the SVG
-    const colors = extractColorsFromSVG(svgString, options);
+    // Draw the image
+    ctx.drawImage(image, 0, 0);
+    
+    // Get image data for processing
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    
+    // Configure Potrace options
+    const potraceOptions = {
+      threshold: options.threshold || 128,
+      turdsize: options.turdsize || 2,
+      alphamax: options.alphamax || 1,
+      optCurve: options.optCurve ?? true,
+      optTolerance: options.optTolerance || 0.2,
+      color: '#000000',
+      background: '#ffffff'
+    };
+    
+    // Convert to SVG using Potrace
+    const svgString = await new Promise<string>((resolve, reject) => {
+      const potrace = new Potrace();
+      potrace.setParameters(potraceOptions);
+      potrace.loadImageData(imageData, (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(potrace.getSVG());
+      });
+    });
+    
+    // Extract paths and colors from the SVG
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgString, 'image/svg+xml');
+    const paths = Array.from(doc.querySelectorAll('path')).map(path => ({
+      d: path.getAttribute('d') || '',
+      fill: path.getAttribute('fill') || '#000000',
+      stroke: path.getAttribute('stroke') || undefined,
+      strokeWidth: path.getAttribute('stroke-width') ? 
+        parseFloat(path.getAttribute('stroke-width')!) : undefined
+    }));
+    
+    // Extract unique colors
+    const colors = extractColorsFromPaths(paths, options);
     
     return {
       id: `svg-${Date.now()}`,
       svgString,
-      colors
+      colors,
+      paths
     };
   } catch (error) {
     console.error("Error converting image to SVG:", error);
@@ -74,27 +129,33 @@ export const applyColorPalette = (
     console.log("Applying color palette to SVG:", svg.id);
     console.log("Colors:", colors);
     
-    // In a real implementation, we would parse the SVG, identify color attributes,
-    // and replace them with the new colors. For this demo, we'll simulate the transformation.
+    // Create a new SVG with the updated colors
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svg.svgString, 'image/svg+xml');
     
-    // Create a new SVG string with the new colors
-    let newSvgString = svg.svgString;
-    
-    // Replace fill colors in the SVG
-    svg.colors.forEach((oldColor, index) => {
+    // Update path colors
+    const paths = doc.querySelectorAll('path');
+    paths.forEach((path, index) => {
       if (index < colors.length) {
-        const newColor = colors[index];
-        newSvgString = newSvgString.replace(
-          new RegExp(oldColor.hex, 'g'),
-          newColor.hex
-        );
+        path.setAttribute('fill', colors[index].hex);
       }
     });
+    
+    // Generate new SVG string
+    const serializer = new XMLSerializer();
+    const newSvgString = serializer.serializeToString(doc);
+    
+    // Update paths with new colors
+    const newPaths = svg.paths.map((path, index) => ({
+      ...path,
+      fill: index < colors.length ? colors[index].hex : path.fill
+    }));
     
     return {
       id: `${svg.id}-recolored`,
       svgString: newSvgString,
-      colors
+      colors,
+      paths: newPaths
     };
   } catch (error) {
     console.error("Error applying color palette to SVG:", error);
@@ -103,40 +164,16 @@ export const applyColorPalette = (
 };
 
 /**
- * Generates a placeholder SVG for demonstration purposes
+ * Extracts colors from SVG paths
  */
-const generatePlaceholderSVG = (options: SVGTransformOptions): string => {
+const extractColorsFromPaths = (
+  paths: SVGPath[],
+  options: SVGTransformOptions
+): Color[] => {
   const { colorMode = 'original', customColors = [] } = options;
   
-  // Define colors based on the color mode
-  let colors: string[] = ['#3498db', '#2c3e50', '#e74c3c', '#ecf0f1', '#f39c12'];
-  
-  if (colorMode === 'monochrome') {
-    colors = ['#2c3e50', '#34495e', '#7f8c8d', '#95a5a6', '#bdc3c7'];
-  } else if (colorMode === 'custom' && customColors.length > 0) {
-    colors = customColors.map(color => color.hex);
-  }
-  
-  // Create a simple logo SVG with the specified colors
-  return `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
-      <rect x="0" y="0" width="200" height="200" fill="${colors[3]}" />
-      <circle cx="100" cy="100" r="70" fill="${colors[0]}" />
-      <rect x="70" y="70" width="60" height="60" fill="${colors[1]}" />
-      <polygon points="100,40 120,70 80,70" fill="${colors[2]}" />
-      <path d="M 50 150 Q 100 180 150 150" stroke="${colors[4]}" stroke-width="5" fill="none" />
-    </svg>
-  `.trim();
-};
-
-/**
- * Extracts colors from an SVG string
- */
-const extractColorsFromSVG = (svgString: string, options: SVGTransformOptions): Color[] => {
-  const { colorMode = 'original', customColors = [] } = options;
-  
-  // In a real implementation, we would parse the SVG and extract all unique colors.
-  // For this demo, we'll return placeholder colors based on the color mode.
+  // Get unique colors from paths
+  const uniqueColors = new Set(paths.map(path => path.fill));
   
   if (colorMode === 'custom' && customColors.length > 0) {
     return customColors;
@@ -152,14 +189,26 @@ const extractColorsFromSVG = (svgString: string, options: SVGTransformOptions): 
     ];
   }
   
-  // Default colors for 'original' mode
-  return [
-    { name: "Primary", hex: "#3498db", rgb: "52, 152, 219" },
-    { name: "Secondary", hex: "#2c3e50", rgb: "44, 62, 80" },
-    { name: "Accent", hex: "#e74c3c", rgb: "231, 76, 60" },
-    { name: "Light", hex: "#ecf0f1", rgb: "236, 240, 241" },
-    { name: "Dark", hex: "#2c3e50", rgb: "44, 62, 80" }
-  ];
+  // Convert unique colors to Color objects
+  return Array.from(uniqueColors).map((hex, index) => ({
+    name: `Color ${index + 1}`,
+    hex,
+    rgb: hexToRgb(hex)
+  }));
+};
+
+/**
+ * Converts hex color to RGB string
+ */
+const hexToRgb = (hex: string): string => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!result) return "0, 0, 0";
+  
+  const r = parseInt(result[1], 16);
+  const g = parseInt(result[2], 16);
+  const b = parseInt(result[3], 16);
+  
+  return `${r}, ${g}, ${b}`;
 };
 
 /**
@@ -167,18 +216,15 @@ const extractColorsFromSVG = (svgString: string, options: SVGTransformOptions): 
  */
 export const downloadSVG = (svg: TransformedSVG, filename: string = 'logo.svg'): void => {
   try {
-    // Create a blob from the SVG string
     const blob = new Blob([svg.svgString], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
     
-    // Create a temporary link and trigger the download
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
     document.body.appendChild(link);
     link.click();
     
-    // Clean up
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   } catch (error) {
@@ -197,13 +243,11 @@ export const convertSVGtoPNG = async (
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
     try {
-      // Create an image element to load the SVG
       const img = new Image();
       const svgBlob = new Blob([svg.svgString], { type: 'image/svg+xml' });
       const url = URL.createObjectURL(svgBlob);
       
       img.onload = () => {
-        // Create a canvas to render the PNG
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
@@ -214,15 +258,10 @@ export const convertSVGtoPNG = async (
           return;
         }
         
-        // Draw the SVG on the canvas
         ctx.drawImage(img, 0, 0, width, height);
-        
-        // Convert the canvas to a PNG data URL
         const pngUrl = canvas.toDataURL('image/png');
         
-        // Clean up
         URL.revokeObjectURL(url);
-        
         resolve(pngUrl);
       };
       
