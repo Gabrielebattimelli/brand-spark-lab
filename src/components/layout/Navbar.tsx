@@ -11,32 +11,48 @@ import {
   Settings,
   User
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/components/ui/use-toast";
 
 interface NavbarProps {
   isAuthenticated?: boolean;
 }
 
-export const Navbar = ({ isAuthenticated = false }: NavbarProps) => {
+export const Navbar = ({ isAuthenticated: propIsAuthenticated }: NavbarProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
+
+  // Use the authentication context to determine if the user is authenticated
+  const isAuthenticated = propIsAuthenticated !== undefined ? propIsAuthenticated : !!user;
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
   };
 
-  const handleLogout = () => {
-    // Implement actual logout logic later
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out",
+      });
+      navigate("/login");
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "An error occurred while logging out",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
     <header className="fixed top-0 left-0 w-full z-50 bg-white shadow-sm">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-        <Link to="/" className="flex items-center space-x-2">
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-            <span className="text-white font-bold text-sm">B</span>
-          </div>
-          <span className="text-xl font-poppins font-bold">BrandIt</span>
+        <Link to="/" className="flex items-center ml-2 md:ml-4 lg:ml-8">
+          <img src="/logo_brandit.png" alt="BrandIt Logo" className="h-12 w-auto object-contain" />
         </Link>
 
         {/* Desktop Navigation */}

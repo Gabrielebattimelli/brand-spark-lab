@@ -54,7 +54,7 @@ export default function Index() {
               <div className="lg:ml-auto">
                 <div className="relative rounded-xl overflow-hidden shadow-2xl border">
                   <img 
-                    src="https://placehold.co/600x400/f38e63/ffffff?text=BrandIt+Platform"
+                    src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80"
                     alt="BrandIt Platform" 
                     className="w-full h-auto"
                   />
@@ -66,43 +66,51 @@ export default function Index() {
         </section>
 
         {/* Features Section */}
-        <section className="py-16 px-4 bg-white">
-          <div className="container mx-auto max-w-6xl">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">The Complete Branding Solution</h2>
-              <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+        <section className="py-20 px-4 bg-gradient-to-b from-white to-gray-50 relative overflow-hidden">
+          {/* Decorative elements */}
+          <div className="absolute top-0 left-0 w-full h-20 bg-gradient-to-b from-primary/5 to-transparent"></div>
+          <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-primary/5 blur-3xl"></div>
+          <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full bg-primary/5 blur-3xl"></div>
+
+          <div className="container mx-auto max-w-6xl relative z-10">
+            <div className="text-center mb-16">
+              <h2 className="text-4xl font-bold text-gray-900 mb-4 relative inline-block">
+                The Complete Branding Solution
+                <span className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-24 h-1 bg-primary rounded-full"></span>
+              </h2>
+              <p className="text-xl text-gray-600 max-w-3xl mx-auto mt-6">
                 Get everything you need to build a professional brand, all in one place.
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               <FeatureCard
-                icon={<Sparkles className="text-primary" size={24} />}
+                icon={<Sparkles className="text-primary" size={28} />}
                 title="AI-Powered Branding"
                 description="Our AI analyzes your responses to create a brand identity perfectly tailored to your business needs."
               />
               <FeatureCard
-                icon={<Palette className="text-primary" size={24} />}
+                icon={<Palette className="text-primary" size={28} />}
                 title="Complete Brand Kit"
                 description="Get a complete brand guideline document, logo designs, color palettes, and font recommendations."
               />
               <FeatureCard
-                icon={<Zap className="text-primary" size={24} />}
+                icon={<Zap className="text-primary" size={28} />}
                 title="Fast & Efficient Process"
                 description="What takes agencies weeks or months, BrandIt completes in minutes through our guided wizard."
               />
               <FeatureCard
-                icon={<Check className="text-primary" size={24} />}
+                icon={<Check className="text-primary" size={28} />}
                 title="Professional Results"
                 description="Achieve agency-quality branding at a fraction of the cost, with professional-grade outputs."
               />
               <FeatureCard
-                icon={<Shield className="text-primary" size={24} />}
+                icon={<Shield className="text-primary" size={28} />}
                 title="Strategic Foundation"
                 description="Not just visuals — build a brand with a solid strategic foundation that aligns with your business goals."
               />
               <FeatureCard
-                icon={<ArrowRight className="text-primary" size={24} />}
+                icon={<ArrowRight className="text-primary" size={28} />}
                 title="Ready-to-Use Files"
                 description="Download production-ready files in industry-standard formats for immediate use across all channels."
               />
@@ -167,10 +175,7 @@ export default function Index() {
             <div className="flex flex-col md:flex-row justify-between items-center md:items-start">
               <div className="mb-8 md:mb-0">
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-                    <span className="text-white font-bold text-sm">B</span>
-                  </div>
-                  <span className="text-xl font-bold">BrandIt</span>
+                  <img src="/logo_brandit.png" alt="BrandIt Logo" className="h-16 w-auto object-contain" />
                 </div>
                 <p className="text-gray-400 max-w-xs">
                   Your AI branding co-pilot. Create professional brand identities in minutes, not months.
@@ -212,9 +217,18 @@ export default function Index() {
 
 function FeatureCard({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) {
   return (
-    <div className="bg-white border rounded-lg p-6 hover:shadow-md transition-shadow">
-      <div className="mb-4">{icon}</div>
-      <h3 className="text-xl font-semibold mb-3">{title}</h3>
+    <div className="bg-white border border-gray-100 rounded-xl p-8 hover:shadow-lg hover:border-primary/20 transition-all duration-300 group relative overflow-hidden">
+      {/* Decorative corner accent */}
+      <div className="absolute top-0 right-0 w-16 h-16 bg-primary/5 -translate-x-8 translate-y-8 rotate-45 transform group-hover:bg-primary/10 transition-all duration-300"></div>
+
+      {/* Icon with background */}
+      <div className="mb-5 relative">
+        <div className="w-14 h-14 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-all duration-300">
+          {icon}
+        </div>
+      </div>
+
+      <h3 className="text-xl font-semibold mb-3 group-hover:text-primary transition-colors duration-300">{title}</h3>
       <p className="text-gray-600">{description}</p>
     </div>
   );

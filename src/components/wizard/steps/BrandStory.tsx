@@ -8,9 +8,19 @@ import { X, Plus, Sparkles, RefreshCw } from "lucide-react";
 import { useAIGeneration } from "@/hooks/use-ai-generation";
 import { toast } from "@/components/ui/use-toast";
 
+interface BrandStoryData {
+  mission: string;
+  vision: string;
+  values: string[];
+  originStory: string;
+  industry?: string;
+  businessName?: string;
+  productService?: string;
+}
+
 interface BrandStoryProps {
-  data: any;
-  onChange: (data: any) => void;
+  data: BrandStoryData;
+  onChange: (data: BrandStoryData) => void;
 }
 
 export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
@@ -24,6 +34,14 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
   const [newValue, setNewValue] = useState("");
   const { generate, isGenerating } = useAIGeneration();
 
+  // Track loading state for each section separately
+  const [loadingStates, setLoadingStates] = useState({
+    mission: false,
+    vision: false,
+    values: false,
+    originStory: false
+  });
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     const updatedData = { ...formData, [name]: value };
@@ -33,7 +51,7 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
 
   const addValue = () => {
     if (!newValue.trim()) return;
-    
+
     const updatedData = {
       ...formData,
       values: [...formData.values, newValue],
@@ -46,7 +64,7 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
   const removeValue = (index: number) => {
     const updatedValues = [...formData.values];
     updatedValues.splice(index, 1);
-    
+
     const updatedData = {
       ...formData,
       values: updatedValues,
@@ -55,25 +73,28 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
     onChange(updatedData);
   };
 
-  const handleGenerate = async (type: 'mission' | 'vision' | 'values') => {
+  const handleGenerate = async (type: 'mission' | 'vision' | 'values' | 'originStory') => {
     const projectData = {
       industry: data.industry || 'technology',
       name: data.businessName || 'Your Business',
       productService: data.productService || 'provides innovative solutions',
     };
 
+    // Set loading state for this specific section
+    setLoadingStates(prev => ({ ...prev, [type]: true }));
+
     try {
       const content = await generate(type, projectData);
       if (content) {
         const updatedData = { ...formData };
-        
+
         if (type === 'values') {
           // Parse values from the AI response
           const valuesList = content
             .split('\n')
             .filter(line => line.trim().startsWith('-') || line.trim().startsWith('•'))
             .map(line => line.replace(/^[-•]\s*/, '').split(':')[0].trim());
-          
+
           updatedData.values = valuesList;
         } else {
           updatedData[type] = content;
@@ -83,7 +104,7 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
         onChange(updatedData);
         toast({
           title: "Content Generated",
-          description: `Your ${type} has been generated successfully.`,
+          description: `Your ${type === 'originStory' ? 'origin story' : type} has been generated successfully.`,
         });
       }
     } catch (error) {
@@ -92,6 +113,9 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
         description: "Failed to generate content. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      // Reset loading state for this specific section
+      setLoadingStates(prev => ({ ...prev, [type]: false }));
     }
   };
 
@@ -115,12 +139,17 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
               variant="outline"
               size="sm"
               onClick={() => handleGenerate('mission')}
-              disabled={isGenerating}
+              disabled={loadingStates.mission}
             >
-              {isGenerating ? (
+              {loadingStates.mission ? (
                 <>
                   <RefreshCw size={16} className="mr-2 animate-spin" />
                   Generating...
+                </>
+              ) : formData.mission ? (
+                <>
+                  <RefreshCw size={16} className="mr-2" />
+                  Regenerate
                 </>
               ) : (
                 <>
@@ -153,12 +182,17 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
               variant="outline"
               size="sm"
               onClick={() => handleGenerate('vision')}
-              disabled={isGenerating}
+              disabled={loadingStates.vision}
             >
-              {isGenerating ? (
+              {loadingStates.vision ? (
                 <>
                   <RefreshCw size={16} className="mr-2 animate-spin" />
                   Generating...
+                </>
+              ) : formData.vision ? (
+                <>
+                  <RefreshCw size={16} className="mr-2" />
+                  Regenerate
                 </>
               ) : (
                 <>
@@ -189,12 +223,17 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
               variant="outline"
               size="sm"
               onClick={() => handleGenerate('values')}
-              disabled={isGenerating}
+              disabled={loadingStates.values}
             >
-              {isGenerating ? (
+              {loadingStates.values ? (
                 <>
                   <RefreshCw size={16} className="mr-2 animate-spin" />
                   Generating...
+                </>
+              ) : formData.values.length > 0 ? (
+                <>
+                  <RefreshCw size={16} className="mr-2" />
+                  Regenerate Values
                 </>
               ) : (
                 <>
@@ -246,7 +285,33 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="originStory">Origin Story</Label>
+          <div className="flex justify-between items-center">
+            <Label htmlFor="originStory">Origin Story</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleGenerate('originStory')}
+              disabled={loadingStates.originStory}
+            >
+              {loadingStates.originStory ? (
+                <>
+                  <RefreshCw size={16} className="mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : formData.originStory ? (
+                <>
+                  <RefreshCw size={16} className="mr-2" />
+                  Regenerate
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} className="mr-2" />
+                  Generate
+                </>
+              )}
+            </Button>
+          </div>
           <Textarea
             id="originStory"
             name="originStory"

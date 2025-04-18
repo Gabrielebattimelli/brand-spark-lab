@@ -1,8 +1,9 @@
 
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAI } from '@/contexts/AIContext';
 
-type GenerationType = 'mission' | 'vision' | 'values';
+type GenerationType = 'mission' | 'vision' | 'values' | 'originStory';
 
 interface GenerationData {
   industry: string;
@@ -11,6 +12,7 @@ interface GenerationData {
 }
 
 export const useAIGeneration = () => {
+  const { geminiApiKey } = useAI();
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,11 +20,17 @@ export const useAIGeneration = () => {
     setIsGenerating(true);
     setError(null);
 
+    if (!geminiApiKey) {
+      setError("Gemini API key is required");
+      setIsGenerating(false);
+      return null;
+    }
+
     try {
       const { data: generatedData, error: functionError } = await supabase.functions.invoke(
         'generate-branding',
         {
-          body: { type, data },
+          body: { type, data, apiKey: geminiApiKey },
         }
       );
 

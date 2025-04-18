@@ -31,15 +31,19 @@ export const WizardLayout = ({
   isSaving = false,
 }: WizardLayoutProps) => {
   const navigate = useNavigate();
-  
+
   // These steps would typically come from a context or prop
   const [steps] = useState<WizardStep[]>([
-    { id: "basics", title: "Business Basics", completed: true },
+    { id: "api-setup", title: "API Setup", completed: true },
+    { id: "basics", title: "Business Basics", completed: false },
     { id: "audience", title: "Target Audience", completed: false },
     { id: "personality", title: "Brand Personality", completed: false },
+    { id: "ai-name", title: "AI Brand Name", completed: false },
     { id: "story", title: "Brand Story & Values", completed: false },
+    { id: "ai-statements", title: "AI Brand Statements", completed: false },
     { id: "competition", title: "Competitive Landscape", completed: false },
     { id: "aesthetics", title: "Mood & Aesthetics", completed: false },
+    { id: "ai-logo", title: "AI Logo Generation", completed: false },
     { id: "results", title: "Results & Brand Kit", completed: false },
   ]);
 

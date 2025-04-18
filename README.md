@@ -1,4 +1,6 @@
-# Welcome to your Lovable project
+# BrandIt - AI-Powered Brand Generation
+
+BrandIt is a comprehensive brand creation platform that leverages AI to help you generate professional brand assets quickly and easily.
 
 ## Project info
 
@@ -59,6 +61,69 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
+- Google Generative AI (Gemini)
+- Ideogram API
+
+## AI Features
+
+BrandIt uses advanced AI to generate:
+
+- **Brand Name Ideas**: Get creative and unique brand name suggestions based on your business details
+- **Brand Messaging**: Generate mission statements, vision statements, value propositions, brand essence, and voice & tone guidelines
+- **Logo Concepts**: Create professional logo designs based on your brand personality and preferences using either Ideogram or ClipDrop
+
+## Getting Started with AI Features
+
+To use the AI features in BrandIt, you'll need:
+
+1. A Gemini API key (for text generation)
+2. Either an Ideogram API key or a ClipDrop API key (for image/logo generation)
+
+### Setting Up API Keys
+
+1. **Gemini API Key**:
+   - Visit [Google AI Studio](https://ai.google.dev/) to create an account
+   - Generate an API key in your Google AI Studio dashboard
+   - Enter this key in the API Key Setup step of the brand wizard
+
+2. **Ideogram API Key** (Option 1 for logo generation):
+   - Visit [Ideogram](https://ideogram.ai/) to create an account
+   - Generate an API key in your Ideogram dashboard
+   - Enter this key in the API Key Setup step of the brand wizard
+
+3. **ClipDrop API Key** (Option 2 for logo generation):
+   - Visit [ClipDrop](https://clipdrop.co/apis) to create an account
+   - Generate an API key in your ClipDrop dashboard
+   - Enter this key in the API Key Setup step of the brand wizard
+
+## Using the Brand Wizard
+
+The brand wizard guides you through the process of creating your brand:
+
+1. **API Setup**: Enter your Gemini API key and either Ideogram or ClipDrop API key
+2. **Business Basics**: Enter your industry, product/service details, and unique selling proposition
+3. **Target Audience**: Define your target demographics and psychographics
+4. **Brand Personality**: Select personality traits and archetypes
+5. **AI Brand Name**: Generate and select a brand name using AI
+6. **Brand Story**: Define your mission, vision, and values (or use AI-generated options)
+7. **AI Brand Statements**: Generate and select mission statements, vision statements, value propositions, brand essence, and voice & tone guidelines
+8. **Competition**: Identify competitors and differentiators
+9. **Aesthetics**: Define your visual style preferences
+10. **AI Logo Generation**: Choose between Ideogram or ClipDrop and generate logo concepts using AI
+11. **Results**: View your complete brand kit and download assets
+
+## Brand Kit
+
+The final brand kit includes:
+
+- Brand name
+- Mission and vision statements
+- Value proposition
+- Brand essence
+- Voice & tone guidelines
+- Logo in multiple formats
+- Color palette
+- Typography recommendations
 
 ## How can I deploy this project?
 

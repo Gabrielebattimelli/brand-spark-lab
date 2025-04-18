@@ -17,10 +17,45 @@ import {
   Circle,
   Sparkles,
   RefreshCw,
+  FileVector,
 } from "lucide-react";
+import { GeneratedLogo } from "@/integrations/ai/ideogram";
+import { GeneratedColorPalette } from "@/integrations/ai/colorPalette";
+import { LogoSVGTransformer } from "@/components/ai/LogoSVGTransformer";
 
 interface ResultsProps {
-  data: any;
+  data: {
+    // Basic info
+    brandName: string;
+    industry: string;
+    productService: string;
+
+    // Brand messaging
+    mission: string;
+    vision: string;
+    values: string[];
+    valueProposition?: string;
+    brandEssence?: string;
+    brandVoice?: string;
+
+    // Visual identity
+    visualStyle: string;
+    colorPreferences: string[];
+    colorPalette?: GeneratedColorPalette | null;
+    logo?: GeneratedLogo | null;
+
+    // Demographics data
+    demographics?: {
+      ageRange?: string;
+      gender?: string;
+      location?: string;
+      income?: string;
+      education?: string;
+    };
+
+    // Other properties that might be needed
+    [key: string]: unknown;
+  };
 }
 
 export const Results = ({ data }: ResultsProps) => {
@@ -29,38 +64,52 @@ export const Results = ({ data }: ResultsProps) => {
   const [isCopied, setIsCopied] = useState(false);
   const [isGeneratingMore, setIsGeneratingMore] = useState(false);
 
-  // Simulated data from the AI generation
+  // Combine provided data with defaults for any missing values
   const generatedContent = {
-    brandName: data.businessName || "NovaBrand",
+    brandName: data.brandName || "NovaBrand",
     mission: data.mission || "To empower businesses with innovative solutions that drive growth and success.",
     vision: data.vision || "A world where every business has the tools and support they need to thrive in the digital era.",
     values: data.values || ["Innovation", "Integrity", "Excellence", "Collaboration"],
-    voiceTone: "Friendly, professional, and knowledgeable. Communication should inspire confidence while remaining approachable and jargon-free.",
-    targetAudience: "Small to medium-sized businesses looking to establish or strengthen their online presence. Decision-makers aged 30-50 who value quality and results over the lowest price point.",
+    voiceTone: data.brandVoice || "Friendly, professional, and knowledgeable. Communication should inspire confidence while remaining approachable and jargon-free.",
+    valueProposition: data.valueProposition || "We provide exceptional value through innovative solutions tailored to your specific needs.",
+    brandEssence: data.brandEssence || "The essence of our brand is built on trust, innovation, and customer success.",
+    targetAudience: data.demographics?.ageRange || data.demographics?.gender || data.demographics?.location 
+      ? `${data.demographics?.ageRange || ""} ${data.demographics?.gender || ""} ${data.demographics?.location ? `from ${data.demographics.location}` : ""}`
+      : "Small to medium-sized businesses looking to establish or strengthen their online presence. Decision-makers aged 30-50 who value quality and results over the lowest price point.",
     brandPersonality: data.visualStyle === "techy" ? "Innovative and forward-thinking" : "Trustworthy and reliable",
-    logos: [
+    // Use the AI-generated logo if available, otherwise use placeholders
+    logos: data.logo ? [
       {
-        id: 1,
+        ...data.logo,
+        selected: true
+      }
+    ] : [
+      {
+        id: "1",
         url: "https://placehold.co/600x400/f38e63/ffffff?text=Logo+1",
         selected: true,
+        prompt: ""
       },
       {
-        id: 2,
+        id: "2",
         url: "https://placehold.co/600x400/f38e63/ffffff?text=Logo+2",
         selected: false,
+        prompt: ""
       },
       {
-        id: 3,
+        id: "3",
         url: "https://placehold.co/600x400/f38e63/ffffff?text=Logo+3",
         selected: false,
+        prompt: ""
       },
       {
-        id: 4,
+        id: "4",
         url: "https://placehold.co/600x400/f38e63/ffffff?text=Logo+4",
         selected: false,
+        prompt: ""
       },
     ],
-    colors: [
+    colors: data.colorPalette ? data.colorPalette.colors : [
       { name: "Primary", hex: "#f38e63", rgb: "243, 142, 99" },
       { name: "Secondary", hex: "#6C757D", rgb: "108, 117, 125" },
       { name: "Accent", hex: "#9b87f5", rgb: "155, 135, 245" },
@@ -206,6 +255,13 @@ export const Results = ({ data }: ResultsProps) => {
                 </div>
 
                 <div>
+                  <h3 className="text-lg font-semibold mb-2">Brand Essence</h3>
+                  <p className="p-4 bg-gray-50 rounded-lg">
+                    {generatedContent.brandEssence}
+                  </p>
+                </div>
+
+                <div>
                   <h3 className="text-lg font-semibold mb-2">Target Audience</h3>
                   <p className="p-4 bg-gray-50 rounded-lg">
                     {generatedContent.targetAudience}
@@ -225,110 +281,148 @@ export const Results = ({ data }: ResultsProps) => {
         {/* Visual Identity Tab */}
         <TabsContent value="visual-identity" className="pt-6">
           <div className="grid gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Logo Options</CardTitle>
-                <CardDescription>
-                  Select your preferred logo design
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {generatedContent.logos.map((logo) => (
-                    <div
-                      key={logo.id}
-                      className={`relative border rounded-lg overflow-hidden cursor-pointer transition-all ${
-                        logo.selected ? "ring-2 ring-primary" : "hover:border-primary/50"
-                      }`}
-                      onClick={() => selectLogo(logo.id)}
-                    >
-                      <img
-                        src={logo.url}
-                        alt={`Logo option ${logo.id}`}
-                        className="w-full h-auto"
-                      />
-                      {logo.selected && (
-                        <div className="absolute top-2 right-2 bg-primary text-white rounded-full p-1">
-                          <CheckCircle size={16} />
+            <Tabs defaultValue="logo-options" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="logo-options">Logo Options</TabsTrigger>
+                <TabsTrigger value="svg-transformer">SVG Transformer</TabsTrigger>
+                <TabsTrigger value="color-typography">Colors & Typography</TabsTrigger>
+              </TabsList>
+
+              {/* Logo Options Tab */}
+              <TabsContent value="logo-options" className="pt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Logo Options</CardTitle>
+                    <CardDescription>
+                      Select your preferred logo design
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {generatedContent.logos.map((logo) => (
+                        <div
+                          key={logo.id}
+                          className={`relative border rounded-lg overflow-hidden cursor-pointer transition-all ${
+                            logo.selected ? "ring-2 ring-primary" : "hover:border-primary/50"
+                          }`}
+                          onClick={() => selectLogo(logo.id)}
+                        >
+                          <img
+                            src={logo.url}
+                            alt={`Logo option ${logo.id}`}
+                            className="w-full h-auto"
+                          />
+                          {logo.selected && (
+                            <div className="absolute top-2 right-2 bg-primary text-white rounded-full p-1">
+                              <CheckCircle size={16} />
+                            </div>
+                          )}
                         </div>
-                      )}
+                      ))}
                     </div>
-                  ))}
-                </div>
-                <div className="mt-6 flex justify-center">
-                  <Button
-                    variant="outline"
-                    onClick={handleGenerateMore}
-                    disabled={isGeneratingMore}
-                  >
-                    {isGeneratingMore ? (
-                      <>
-                        <RefreshCw size={16} className="mr-2 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={16} className="mr-2" />
-                        Generate More Options
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                    <div className="mt-6 flex justify-center">
+                      <Button
+                        variant="outline"
+                        onClick={handleGenerateMore}
+                        disabled={isGeneratingMore}
+                      >
+                        {isGeneratingMore ? (
+                          <>
+                            <RefreshCw size={16} className="mr-2 animate-spin" />
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles size={16} className="mr-2" />
+                            Generate More Options
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Color Palette</CardTitle>
-                <CardDescription>
-                  Your brand's color scheme
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  {generatedContent.colors.map((color, index) => (
-                    <div key={index} className="text-center">
-                      <div
-                        className="h-20 rounded-md mb-2"
-                        style={{ backgroundColor: color.hex }}
-                      ></div>
-                      <p className="font-medium">{color.name}</p>
-                      <p className="text-sm text-gray-600">{color.hex}</p>
-                      <p className="text-xs text-gray-500">RGB: {color.rgb}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+              {/* SVG Transformer Tab */}
+              <TabsContent value="svg-transformer" className="pt-4">
+                {generatedContent.logos.find(logo => logo.selected) ? (
+                  <LogoSVGTransformer 
+                    logo={generatedContent.logos.find(logo => logo.selected)!}
+                    colorPalette={data.colorPalette}
+                  />
+                ) : (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <FileVector className="h-12 w-12 text-gray-400 mb-4" />
+                        <h3 className="text-lg font-medium mb-2">No Logo Selected</h3>
+                        <p className="text-gray-500 max-w-md">
+                          Please select a logo from the Logo Options tab to transform it into SVG format and apply different color schemes.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Typography</CardTitle>
-                <CardDescription>
-                  Font recommendations for your brand
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <h3 className="text-lg font-semibold mb-3">Headings: {generatedContent.typography.headings}</h3>
-                    <div className="space-y-2">
-                      <p className="text-3xl font-poppins font-bold">Headline Text</p>
-                      <p className="text-2xl font-poppins font-semibold">Subheading Text</p>
-                      <p className="text-xl font-poppins">Section Title</p>
-                    </div>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold mb-3">Body: {generatedContent.typography.body}</h3>
-                    <div className="space-y-2">
-                      <p className="font-inter">This is paragraph text in your body font. It should be highly readable and work well at different sizes.</p>
-                      <p className="font-inter text-sm">This is smaller text that might be used for captions or secondary information.</p>
-                      <p className="font-inter font-medium">This is medium weight text for emphasis.</p>
-                    </div>
-                  </div>
+              {/* Colors & Typography Tab */}
+              <TabsContent value="color-typography" className="pt-4">
+                <div className="grid gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Color Palette</CardTitle>
+                      <CardDescription>
+                        Your brand's color scheme
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        {generatedContent.colors.map((color, index) => (
+                          <div key={index} className="text-center">
+                            <div
+                              className="h-20 rounded-md mb-2"
+                              style={{ backgroundColor: color.hex }}
+                            ></div>
+                            <p className="font-medium">{color.name}</p>
+                            <p className="text-sm text-gray-600">{color.hex}</p>
+                            <p className="text-xs text-gray-500">RGB: {color.rgb}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Typography</CardTitle>
+                      <CardDescription>
+                        Font recommendations for your brand
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid md:grid-cols-2 gap-6">
+                        <div>
+                          <h3 className="text-lg font-semibold mb-3">Headings: {generatedContent.typography.headings}</h3>
+                          <div className="space-y-2">
+                            <p className="text-3xl font-poppins font-bold">Headline Text</p>
+                            <p className="text-2xl font-poppins font-semibold">Subheading Text</p>
+                            <p className="text-xl font-poppins">Section Title</p>
+                          </div>
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold mb-3">Body: {generatedContent.typography.body}</h3>
+                          <div className="space-y-2">
+                            <p className="font-inter">This is paragraph text in your body font. It should be highly readable and work well at different sizes.</p>
+                            <p className="font-inter text-sm">This is smaller text that might be used for captions or secondary information.</p>
+                            <p className="font-inter font-medium">This is medium weight text for emphasis.</p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
-              </CardContent>
-            </Card>
+              </TabsContent>
+            </Tabs>
           </div>
 
           <div className="mt-6 flex justify-end">
@@ -359,10 +453,11 @@ export const Results = ({ data }: ResultsProps) => {
                     <li>• Logo Files (SVG, PNG with transparent background, JPG)</li>
                     <li>• Color Palette with HEX, RGB, and CMYK codes</li>
                     <li>• Typography recommendations</li>
+                    <li>• SVG versions with different color schemes</li>
                   </ul>
                 </div>
               </div>
-              
+
               <div className="text-center py-6">
                 <Button
                   size="lg"
