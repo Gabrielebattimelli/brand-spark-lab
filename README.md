@@ -112,6 +112,14 @@ The brand wizard guides you through the process of creating your brand:
 10. **AI Logo Generation**: Choose between Ideogram or ClipDrop and generate logo concepts using AI
 11. **Results**: View your complete brand kit and download assets
 
+## Troubleshooting
+
+If you encounter issues with text generation (especially for value propositions or brand voice statements), please refer to:
+
+- [Troubleshooting Guide](README_TROUBLESHOOTING.md) - Solutions for common issues
+- [Deployment Guide](DEPLOYMENT_GUIDE.md) - Instructions for deploying the Edge Function
+- [Environment Variables Guide](README_ENVIRONMENT_VARIABLES.md) - Information about required API keys
+
 ## Brand Kit
 
 The final brand kit includes:

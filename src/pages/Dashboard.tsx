@@ -1,44 +1,65 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Navbar } from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, ArrowRight, Clock, Check, AlertTriangle } from "lucide-react";
+import { useProjects, Project as ProjectType } from "@/hooks/use-projects";
+import { formatDistanceToNow } from "date-fns";
+import { useAuth } from "@/contexts/AuthContext";
 
-interface Project {
-  id: string;
-  name: string;
-  status: "in-progress" | "completed" | "draft";
+interface Project extends ProjectType {
   lastUpdated: string;
-  completionPercentage: number;
 }
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [projects, setProjects] = useState<Project[]>([
-    {
-      id: "1",
-      name: "Startup Rebrand",
-      status: "in-progress",
-      lastUpdated: "2 days ago",
-      completionPercentage: 45,
-    },
-    {
-      id: "2",
-      name: "Coffee Shop",
-      status: "completed",
-      lastUpdated: "1 week ago",
-      completionPercentage: 100,
-    },
-    {
-      id: "3",
-      name: "Tech Blog",
-      status: "draft",
-      lastUpdated: "3 days ago",
-      completionPercentage: 15,
-    },
-  ]);
+  const { user } = useAuth();
+  const { getProjects, loading: projectsLoading } = useProjects();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  console.log("Dashboard - user:", user);
+
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadProjects = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Check if user is authenticated
+        if (!user) {
+          console.log("Dashboard - user not authenticated, waiting...");
+          setLoading(false); // Set loading to false if no user
+          // We'll let the ProtectedRoute handle the redirect
+          return;
+        }
+
+        console.log("Dashboard - loading projects for user:", user.id);
+        const fetchedProjects = await getProjects();
+        console.log("Dashboard - fetched projects:", fetchedProjects);
+
+        // Transform projects to include lastUpdated
+        const formattedProjects = fetchedProjects.map(project => ({
+          ...project,
+          lastUpdated: formatDistanceToNow(new Date(project.updated_at), { addSuffix: true })
+        }));
+
+        setProjects(formattedProjects);
+      } catch (error) {
+        console.error("Failed to load projects:", error);
+        setError("Failed to load projects. Please try refreshing the page.");
+      } finally {
+        setLoading(false);
+        console.log("Dashboard - finished loading projects, loading set to false");
+      }
+    };
+
+    loadProjects();
+  }, [getProjects, user]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -85,7 +106,30 @@ export default function Dashboard() {
             </Button>
           </div>
 
-          {projects.length === 0 ? (
+          {loading ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-10 text-center">
+              <div className="flex flex-col items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+                <p className="text-gray-600">Loading your projects...</p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="bg-white rounded-lg border border-red-200 p-10 text-center">
+              <div className="flex flex-col items-center justify-center">
+                <div className="text-red-500 mb-4">
+                  <AlertTriangle size={32} />
+                </div>
+                <p className="text-red-600 mb-2">{error}</p>
+                <Button 
+                  onClick={() => window.location.reload()}
+                  variant="outline"
+                  className="mt-4"
+                >
+                  Retry
+                </Button>
+              </div>
+            </div>
+          ) : projects.length === 0 ? (
             <div className="bg-white rounded-lg border border-gray-200 p-10 text-center">
               <div className="max-w-md mx-auto">
                 <h3 className="text-xl font-semibold mb-3">No projects yet</h3>
@@ -115,11 +159,11 @@ export default function Dashboard() {
                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-primary"
-                        style={{ width: `${project.completionPercentage}%` }}
+                        style={{ width: `${project.completion_percentage}%` }}
                       ></div>
                     </div>
                     <p className="text-sm text-gray-500 mt-2">
-                      {project.completionPercentage}% Complete
+                      {project.completion_percentage}% Complete
                     </p>
                   </CardContent>
                   <CardFooter className="pt-1 flex justify-between">

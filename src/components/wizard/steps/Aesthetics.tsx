@@ -1,11 +1,13 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Button } from "@/components/ui/button";
-import { X, Plus, Upload, ExternalLink } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { X, Plus, Upload, ExternalLink, RefreshCw } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { useAI } from "@/contexts/AIContext";
+import { generateColorPalettes, ColorPaletteGenerationParams, GeneratedColorPalette } from "@/integrations/ai/colorPalette";
 
 interface AestheticsProps {
   data: any;
@@ -16,42 +18,58 @@ const visualStyles = [
   {
     id: "minimalist",
     name: "Minimalist",
-    description: "Clean, simple, and uncluttered design with ample white space."
+    description: "Clean, simple, and uncluttered design with ample white space.",
+    imageUrl: "https://images.unsplash.com/photo-1567225557594-88d73e55f2cb?ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=80",
+    colors: ["#FFFFFF", "#F5F5F5", "#333333", "#000000", "#E0E0E0"]
   },
   {
     id: "bold",
     name: "Bold",
-    description: "Strong colors, distinctive typography, and eye-catching elements."
+    description: "Strong colors, distinctive typography, and eye-catching elements.",
+    imageUrl: "https://images.unsplash.com/photo-1568377210220-151e1d7f42c7?ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=80",
+    colors: ["#FF3366", "#3A0CA3", "#FFCA3A", "#000000", "#FFFFFF"]
   },
   {
     id: "elegant",
     name: "Elegant",
-    description: "Refined, sophisticated aesthetic with premium feel."
+    description: "Refined, sophisticated aesthetic with premium feel.",
+    imageUrl: "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=80",
+    colors: ["#D4AF37", "#000000", "#FFFFFF", "#F5F5F5", "#333333"]
   },
   {
     id: "retro",
     name: "Retro",
-    description: "Vintage-inspired design elements that evoke nostalgia."
+    description: "Vintage-inspired design elements that evoke nostalgia.",
+    imageUrl: "https://images.unsplash.com/photo-1577083552431-6e5fd01aa342?ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=80",
+    colors: ["#FF6B35", "#F7C59F", "#EFEFD0", "#004E89", "#1A659E"]
   },
   {
     id: "techy",
     name: "Tech-Forward",
-    description: "Modern, cutting-edge look with digital elements and futuristic aesthetics."
+    description: "Modern, cutting-edge look with digital elements and futuristic aesthetics.",
+    imageUrl: "https://images.unsplash.com/photo-1535223289827-42f1e9919769?ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=80",
+    colors: ["#00B2CA", "#7DCFB6", "#1D3557", "#000000", "#FFFFFF"]
   },
   {
     id: "playful",
     name: "Playful",
-    description: "Fun, vibrant design with whimsical elements and creative touches."
+    description: "Fun, vibrant design with whimsical elements and creative touches.",
+    imageUrl: "https://images.unsplash.com/photo-1560800452-f2d475982b96?ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=80",
+    colors: ["#FF9F1C", "#FFBF69", "#CBF3F0", "#2EC4B6", "#FFFFFF"]
   },
   {
     id: "organic",
     name: "Organic/Natural",
-    description: "Nature-inspired design with earthy tones and organic shapes."
+    description: "Nature-inspired design with earthy tones and organic shapes.",
+    imageUrl: "https://images.unsplash.com/photo-1501004318641-b39e6451bec6?ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=80",
+    colors: ["#606C38", "#283618", "#FEFAE0", "#DDA15E", "#BC6C25"]
   },
   {
     id: "corporate",
     name: "Corporate",
-    description: "Professional, polished look suitable for traditional business environments."
+    description: "Professional, polished look suitable for traditional business environments.",
+    imageUrl: "https://images.unsplash.com/photo-1497366754035-f200968a6e72?ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=80",
+    colors: ["#003049", "#D62828", "#F77F00", "#FCBF49", "#EAE2B7"]
   }
 ];
 
@@ -62,16 +80,91 @@ const colorOptions = [
 ];
 
 export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
+  const { geminiApiKey } = useAI();
   const [formData, setFormData] = useState({
     visualStyle: data.visualStyle || "",
     colorPreferences: data.colorPreferences || [],
     inspirationKeywords: data.inspirationKeywords || [],
     moodboardUrls: data.moodboardUrls || [],
+    colorPalettes: data.colorPalettes || [],
   });
 
   const [newKeyword, setNewKeyword] = useState("");
   const [newMoodboardUrl, setNewMoodboardUrl] = useState("");
   const [newColor, setNewColor] = useState("");
+  const [colorPalettes, setColorPalettes] = useState<GeneratedColorPalette[]>([]);
+  const [isGeneratingPalettes, setIsGeneratingPalettes] = useState(false);
+
+  // Get the selected visual style
+  const selectedStyle = visualStyles.find(style => style.id === formData.visualStyle);
+
+  // Function to regenerate color palettes
+  const regeneratePalettes = async () => {
+    if (!geminiApiKey || !formData.visualStyle) return;
+
+    try {
+      setIsGeneratingPalettes(true);
+
+      const params: ColorPaletteGenerationParams = {
+        brandName: data.businessName || "Brand",
+        industry: data.industry || "General",
+        brandPersonality: data.brandPersonality || formData.visualStyle,
+        aestheticPreferences: [formData.visualStyle, ...(formData.inspirationKeywords || [])],
+        colorPreferences: formData.colorPreferences || [],
+      };
+
+      const palettes = await generateColorPalettes(geminiApiKey, params, 3);
+      setColorPalettes(palettes);
+
+      // Update formData with the generated palettes
+      const updatedData = {
+        ...formData,
+        colorPalettes: palettes,
+      };
+      setFormData(updatedData);
+      onChange(updatedData);
+    } catch (error) {
+      console.error("Error generating color palettes:", error);
+    } finally {
+      setIsGeneratingPalettes(false);
+    }
+  };
+
+  // Generate color palettes when visual style or color preferences change
+  useEffect(() => {
+    const generatePalettes = async () => {
+      if (!geminiApiKey || !formData.visualStyle) return;
+
+      try {
+        setIsGeneratingPalettes(true);
+
+        const params: ColorPaletteGenerationParams = {
+          brandName: data.businessName || "Brand",
+          industry: data.industry || "General",
+          brandPersonality: data.brandPersonality || formData.visualStyle,
+          aestheticPreferences: [formData.visualStyle, ...(formData.inspirationKeywords || [])],
+          colorPreferences: formData.colorPreferences || [],
+        };
+
+        const palettes = await generateColorPalettes(geminiApiKey, params, 3);
+        setColorPalettes(palettes);
+
+        // Update formData with the generated palettes
+        const updatedData = {
+          ...formData,
+          colorPalettes: palettes,
+        };
+        setFormData(updatedData);
+        onChange(updatedData);
+      } catch (error) {
+        console.error("Error generating color palettes:", error);
+      } finally {
+        setIsGeneratingPalettes(false);
+      }
+    };
+
+    generatePalettes();
+  }, [formData.visualStyle, formData.colorPreferences.length, geminiApiKey]);
 
   const handleVisualStyleChange = (value: string) => {
     const updatedData = {
@@ -86,7 +179,7 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
     const updatedColors = formData.colorPreferences.includes(color)
       ? formData.colorPreferences.filter((c: string) => c !== color)
       : [...formData.colorPreferences, color];
-    
+
     const updatedData = {
       ...formData,
       colorPreferences: updatedColors,
@@ -97,7 +190,7 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
 
   const addCustomColor = () => {
     if (!newColor.trim()) return;
-    
+
     const updatedData = {
       ...formData,
       colorPreferences: [...formData.colorPreferences, newColor],
@@ -109,7 +202,7 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
 
   const addKeyword = () => {
     if (!newKeyword.trim()) return;
-    
+
     const updatedData = {
       ...formData,
       inspirationKeywords: [...formData.inspirationKeywords, newKeyword],
@@ -122,7 +215,7 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
   const removeKeyword = (index: number) => {
     const updatedKeywords = [...formData.inspirationKeywords];
     updatedKeywords.splice(index, 1);
-    
+
     const updatedData = {
       ...formData,
       inspirationKeywords: updatedKeywords,
@@ -133,7 +226,7 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
 
   const addMoodboardUrl = () => {
     if (!newMoodboardUrl.trim()) return;
-    
+
     const updatedData = {
       ...formData,
       moodboardUrls: [...formData.moodboardUrls, newMoodboardUrl],
@@ -146,7 +239,7 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
   const removeMoodboardUrl = (index: number) => {
     const updatedUrls = [...formData.moodboardUrls];
     updatedUrls.splice(index, 1);
-    
+
     const updatedData = {
       ...formData,
       moodboardUrls: updatedUrls,
@@ -170,7 +263,7 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
           <p className="text-gray-600 mb-6">
             Select the visual aesthetic that best represents your brand.
           </p>
-          
+
           <RadioGroup
             value={formData.visualStyle}
             onValueChange={handleVisualStyleChange}
@@ -187,8 +280,25 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
                   htmlFor={style.id}
                   className="flex flex-col p-4 border rounded-lg cursor-pointer peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 hover:bg-gray-50 transition-colors"
                 >
+                  <div className="mb-3 overflow-hidden rounded-md">
+                    <img 
+                      src={style.imageUrl} 
+                      alt={`${style.name} style example`} 
+                      className="w-full h-32 object-cover transition-transform hover:scale-105"
+                    />
+                  </div>
                   <span className="font-medium mb-1">{style.name}</span>
-                  <span className="text-sm text-gray-600">{style.description}</span>
+                  <span className="text-sm text-gray-600 mb-2">{style.description}</span>
+                  <div className="flex space-x-1 mt-1">
+                    {style.colors.map((color, index) => (
+                      <div 
+                        key={index} 
+                        className="w-6 h-6 rounded-full border border-gray-200" 
+                        style={{ backgroundColor: color }}
+                        title={color}
+                      />
+                    ))}
+                  </div>
                 </Label>
               </div>
             ))}
@@ -196,54 +306,207 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
         </div>
 
         <div className="mb-10">
-          <h2 className="text-xl font-semibold mb-4">Color Preferences</h2>
-          <p className="text-gray-600 mb-6">
-            Select colors that resonate with your brand. Your brand kit will include #f38e63 as a primary color, along with complementary colors.
-          </p>
-          
-          <div className="mb-4">
-            <div className="flex flex-wrap gap-2">
-              {colorOptions.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => toggleColorPreference(color)}
-                  className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                    formData.colorPreferences.includes(color)
-                      ? "bg-primary text-white"
-                      : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-                  }`}
-                >
-                  {color}
-                </button>
-              ))}
-            </div>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Brand Color Palette</h2>
+            {colorPalettes.length > 0 && !isGeneratingPalettes && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={regeneratePalettes}
+                className="flex items-center gap-1"
+              >
+                <RefreshCw size={14} />
+                <span>Regenerate Palettes</span>
+              </Button>
+            )}
           </div>
 
-          <div className="flex items-center gap-2 mb-1">
-            <Input
-              placeholder="Add a custom color (e.g., Turquoise, Peach)"
-              value={newColor}
-              onChange={(e) => setNewColor(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addCustomColor();
-                }
-              }}
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon"
-              onClick={addCustomColor}
-            >
-              <Plus size={16} />
-            </Button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Color Preferences Section */}
+            <div>
+              <h3 className="text-lg font-medium mb-3">Color Preferences</h3>
+              <p className="text-gray-600 mb-4">
+                Select colors that resonate with your brand. These will influence the AI-generated palettes.
+              </p>
+
+              <div className="mb-4">
+                <div className="flex flex-wrap gap-2">
+                  {colorOptions.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => toggleColorPreference(color)}
+                      className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                        formData.colorPreferences.includes(color)
+                          ? "bg-primary text-white"
+                          : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                      }`}
+                    >
+                      {color}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 mb-1">
+                <Input
+                  placeholder="Add a custom color (e.g., Turquoise, Peach)"
+                  value={newColor}
+                  onChange={(e) => setNewColor(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addCustomColor();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  onClick={addCustomColor}
+                >
+                  <Plus size={16} />
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500 mb-4">
+                You can add custom colors that aren't in the list above.
+              </p>
+
+              {formData.colorPreferences.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-medium mb-2">Your selected colors:</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {formData.colorPreferences.map((color: string, index: number) => (
+                      <div key={index} className="bg-gray-100 rounded-full px-3 py-1 flex items-center gap-1">
+                        <span className="text-sm">{color}</span>
+                        <button
+                          type="button"
+                          className="text-gray-500 hover:text-gray-700"
+                          onClick={() => {
+                            const updatedColors = [...formData.colorPreferences];
+                            updatedColors.splice(index, 1);
+                            const updatedData = {
+                              ...formData,
+                              colorPreferences: updatedColors,
+                            };
+                            setFormData(updatedData);
+                            onChange(updatedData);
+                          }}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6">
+                <Button 
+                  onClick={regeneratePalettes} 
+                  disabled={isGeneratingPalettes || !formData.visualStyle}
+                  className="w-full"
+                >
+                  {isGeneratingPalettes ? (
+                    <>
+                      <RefreshCw size={16} className="mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : colorPalettes.length > 0 ? (
+                    <>
+                      <RefreshCw size={16} className="mr-2" />
+                      Regenerate Color Palettes
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw size={16} className="mr-2" />
+                      Generate Color Palettes
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* AI-Generated Palettes Section */}
+            <div>
+              <h3 className="text-lg font-medium mb-3">AI-Generated Palettes</h3>
+              <p className="text-gray-600 mb-4">
+                Based on your visual style and color preferences, here are some AI-generated color palettes for your brand.
+              </p>
+
+              {isGeneratingPalettes ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw size={20} className="animate-spin text-primary" />
+                    <span>Generating color palettes...</span>
+                  </div>
+                </div>
+              ) : colorPalettes.length > 0 ? (
+                <div className="space-y-4">
+                  {colorPalettes.map((palette, index) => (
+                    <Card key={palette.id} className={`overflow-hidden ${palette.selected ? 'ring-2 ring-primary' : ''}`}>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-lg">Palette {index + 1}</CardTitle>
+                        <CardDescription>
+                          {palette.selected ? 'Selected palette' : 'Click to select'}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="pb-3">
+                        <div className="space-y-3">
+                          {palette.colors.map((color) => (
+                            <div key={color.name} className="flex items-center gap-2">
+                              <div 
+                                className="w-10 h-10 rounded-md border border-gray-200 flex-shrink-0" 
+                                style={{ backgroundColor: color.hex }}
+                              />
+                              <div>
+                                <div className="font-medium text-sm">{color.name}</div>
+                                <div className="text-xs text-gray-500">{color.hex}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                      <CardFooter className="pt-0">
+                        <Button 
+                          variant={palette.selected ? "outline" : "default"}
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            // Update selected palette
+                            const updatedPalettes = colorPalettes.map(p => ({
+                              ...p,
+                              selected: p.id === palette.id
+                            }));
+                            setColorPalettes(updatedPalettes);
+
+                            // Update formData
+                            const updatedData = {
+                              ...formData,
+                              colorPalettes: updatedPalettes,
+                            };
+                            setFormData(updatedData);
+                            onChange(updatedData);
+                          }}
+                        >
+                          {palette.selected ? 'Selected' : 'Select Palette'}
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 border rounded-lg bg-gray-50">
+                  <p className="text-gray-500">
+                    {formData.visualStyle ? 
+                      "Click the Generate button to create color palettes based on your preferences." : 
+                      "Select a visual style and color preferences to generate color palettes."}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
-          <p className="text-xs text-gray-500 mb-4">
-            You can add custom colors that aren't in the list above.
-          </p>
         </div>
 
         <div className="mb-10">
@@ -251,7 +514,7 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
           <p className="text-gray-600 mb-4">
             Add words that describe the feeling or aesthetic you want your brand to convey.
           </p>
-          
+
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Input
@@ -297,7 +560,7 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
           <p className="text-gray-600 mb-4">
             Optionally add links to images or websites that represent the visual style you're looking for.
           </p>
-          
+
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Input

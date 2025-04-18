@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Navbar } from "@/components/layout/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Register() {
   const [name, setName] = useState("");
@@ -32,14 +33,40 @@ export default function Register() {
     setLoading(true);
 
     try {
+      // First check if the user already exists
+      const { data: existingUsers } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (existingUsers) {
+        toast({
+          title: "Account already exists",
+          description: "An account with this email already exists. Please log in instead.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
       const { error } = await signUp(email, password, name);
 
       if (error) {
-        toast({
-          title: "Error creating account",
-          description: error.message,
-          variant: "destructive",
-        });
+        // Handle specific error for existing user
+        if (error.message.includes('already registered')) {
+          toast({
+            title: "Account already exists",
+            description: "An account with this email already exists. Please log in instead.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Error creating account",
+            description: error.message,
+            variant: "destructive",
+          });
+        }
       } else {
         toast({
           title: "Account created",

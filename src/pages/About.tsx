@@ -1,6 +1,7 @@
 import { Navbar } from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import { Users, Award, Lightbulb, Sparkles, Zap, Heart } from "lucide-react";
 
 export default function About() {
   return (
@@ -41,7 +42,7 @@ export default function About() {
               </div>
               <div className="rounded-xl overflow-hidden shadow-xl">
                 <img 
-                  src="https://placehold.co/600x400/f38e63/ffffff?text=Our+Team"
+                  src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80"
                   alt="BrandIt Team" 
                   className="w-full h-auto"
                 />
@@ -61,26 +62,32 @@ export default function About() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <ValueCard
+                icon={<Users className="text-primary" size={24} />}
                 title="Accessibility"
                 description="We believe professional branding should be accessible to everyone, not just those with big budgets."
               />
               <ValueCard
+                icon={<Award className="text-primary" size={24} />}
                 title="Quality"
                 description="We never compromise on quality. Our AI is trained on the best branding practices to deliver professional results."
               />
               <ValueCard
+                icon={<Lightbulb className="text-primary" size={24} />}
                 title="Innovation"
                 description="We're constantly pushing the boundaries of what's possible with AI and design technology."
               />
               <ValueCard
+                icon={<Zap className="text-primary" size={24} />}
                 title="Simplicity"
                 description="We make complex branding processes simple and straightforward for our users."
               />
               <ValueCard
+                icon={<Sparkles className="text-primary" size={24} />}
                 title="Empowerment"
                 description="We empower businesses to take control of their brand identity and stand out in their market."
               />
               <ValueCard
+                icon={<Heart className="text-primary" size={24} />}
                 title="Integrity"
                 description="We're honest, transparent, and committed to doing what's right for our customers."
               />
@@ -153,10 +160,15 @@ export default function About() {
 }
 
 // Value Card Component
-function ValueCard({ title, description }: { title: string; description: string }) {
+function ValueCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
-    <div className="p-6 border rounded-lg shadow-sm hover:shadow-md transition-shadow">
-      <h3 className="text-xl font-semibold mb-3 text-gray-900">{title}</h3>
+    <div className="p-6 border rounded-lg shadow-sm hover:shadow-md transition-all duration-300 hover:border-primary/20 group">
+      <div className="mb-4">
+        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-all duration-300">
+          {icon}
+        </div>
+      </div>
+      <h3 className="text-xl font-semibold mb-3 text-gray-900 group-hover:text-primary transition-colors duration-300">{title}</h3>
       <p className="text-gray-600">{description}</p>
     </div>
   );

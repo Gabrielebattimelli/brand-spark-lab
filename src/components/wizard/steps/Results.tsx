@@ -17,7 +17,7 @@ import {
   Circle,
   Sparkles,
   RefreshCw,
-  FileVector,
+  FileType,
 } from "lucide-react";
 import { GeneratedLogo } from "@/integrations/ai/ideogram";
 import { GeneratedColorPalette } from "@/integrations/ai/colorPalette";
@@ -354,7 +354,7 @@ export const Results = ({ data }: ResultsProps) => {
                   <Card>
                     <CardContent className="pt-6">
                       <div className="flex flex-col items-center justify-center py-8 text-center">
-                        <FileVector className="h-12 w-12 text-gray-400 mb-4" />
+                        <FileType className="h-12 w-12 text-gray-400 mb-4" />
                         <h3 className="text-lg font-medium mb-2">No Logo Selected</h3>
                         <p className="text-gray-500 max-w-md">
                           Please select a logo from the Logo Options tab to transform it into SVG format and apply different color schemes.
@@ -496,6 +496,14 @@ export const Results = ({ data }: ResultsProps) => {
                 <Button variant="outline" className="justify-between">
                   Color Palette (PDF)
                   <Download size={16} />
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="justify-between"
+                  onClick={() => setActiveTab("visual-identity")}
+                >
+                  SVG Logo Editor
+                  <FileType size={16} />
                 </Button>
               </div>
             </CardFooter>

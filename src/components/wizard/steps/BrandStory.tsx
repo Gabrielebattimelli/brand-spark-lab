@@ -86,14 +86,15 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
     try {
       const content = await generate(type, projectData);
       if (content) {
+        // Create a deep copy of the current form data to avoid mutation issues
         const updatedData = { ...formData };
 
         if (type === 'values') {
           // Parse values from the AI response
           const valuesList = content
             .split('\n')
-            .filter(line => line.trim().startsWith('-') || line.trim().startsWith('•'))
-            .map(line => line.replace(/^[-•]\s*/, '').split(':')[0].trim());
+            .filter(line => line.trim().startsWith('Value:'))
+            .map(line => line.replace('Value:', '').trim());
 
           updatedData.values = valuesList;
         } else {

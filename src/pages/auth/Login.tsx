@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Navbar } from "@/components/layout/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
+import { Mail, Lock, LogIn } from "lucide-react";
 
 export default function Login() {
   const [email, setEmail] = useState("");

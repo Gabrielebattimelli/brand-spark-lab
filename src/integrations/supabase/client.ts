@@ -9,3 +9,18 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 // import { supabase } from "@/integrations/supabase/client";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
+// Test the connection to Supabase
+(async () => {
+  try {
+    console.log("Testing Supabase connection...");
+    const { data, error } = await supabase.from('projects').select('count').limit(1);
+    if (error) {
+      console.error("Supabase connection test failed:", error);
+    } else {
+      console.log("Supabase connection test successful:", data);
+    }
+  } catch (err) {
+    console.error("Supabase connection test error:", err);
+  }
+})();

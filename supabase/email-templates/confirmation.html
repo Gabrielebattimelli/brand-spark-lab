@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirm Your BrandIt Account</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      margin: 0;
+      padding: 0;
+      background-color: #f9f9f9;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    .header {
+      text-align: center;
+      padding: 20px 0;
+      border-bottom: 1px solid #eaeaea;
+    }
+    .logo {
+      max-width: 180px;
+      height: auto;
+    }
+    .content {
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .button {
+      display: inline-block;
+      padding: 12px 24px;
+      background-color: #f38e63;
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: 600;
+      margin: 20px 0;
+      transition: background-color 0.3s;
+    }
+    .button:hover {
+      background-color: #e67e53;
+    }
+    .footer {
+      text-align: center;
+      padding: 20px;
+      color: #888;
+      font-size: 12px;
+      border-top: 1px solid #eaeaea;
+    }
+    .highlight {
+      color: #f38e63;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://xhxpgtshtnizkggiguqk.supabase.co/storage/v1/object/public/public/logo_brandit.png" alt="BrandIt Logo" class="logo">
+    </div>
+    <div class="content">
+      <h1>Welcome to <span class="highlight">BrandIt</span>!</h1>
+      <p>Thank you for signing up. We're excited to help you create an amazing brand identity.</p>
+      <p>Please confirm your email address to get started with your branding journey.</p>
+      <a href="{{ .ConfirmationURL }}" class="button">Confirm Email Address</a>
+      <p>If you didn't create an account with BrandIt, you can safely ignore this email.</p>
+    </div>
+    <div class="footer">
+      <p>© 2023 BrandIt. All rights reserved.</p>
+      <p>If you have any questions, please contact our support team at support@brandit.com</p>
+    </div>
+  </div>
+</body>
+</html>

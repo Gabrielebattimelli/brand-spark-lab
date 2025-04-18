@@ -54,7 +54,7 @@ export default function Index() {
               <div className="lg:ml-auto">
                 <div className="relative rounded-xl overflow-hidden shadow-2xl border">
                   <img 
-                    src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80"
+                    src="https://images.unsplash.com/photo-1636247499734-893da2bcfc1c?q=80&w=1332&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D=format&fit=crop&w=2070&q=80"
                     alt="BrandIt Platform" 
                     className="w-full h-auto"
                   />

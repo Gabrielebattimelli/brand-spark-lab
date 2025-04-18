@@ -8,6 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Sparkles } from "lucide-react";
+import { useProjects } from "@/hooks/use-projects";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 const industries = [
   "Technology",
@@ -27,7 +30,11 @@ const industries = [
 
 export default function NewProject() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const { createProject, error } = useProjects();
+
+  console.log("NewProject - user:", user);
   const [projectData, setProjectData] = useState({
     name: "",
     industry: "",
@@ -43,17 +50,62 @@ export default function NewProject() {
     setProjectData((prev) => ({ ...prev, industry: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
-    // Simulate API call
-    setTimeout(() => {
+
+    try {
+      // Check if user is authenticated
+      if (!user) {
+        console.log("NewProject - user not authenticated");
+        toast.error("You must be logged in to create a project. Please log in and try again.");
+        navigate("/login");
+        return;
+      }
+
+      console.log("NewProject - creating project with data:", projectData);
+
+      // Create project in the database
+      toast.loading("Creating your project...");
+
+      const newProject = await createProject({
+        name: projectData.name,
+        industry: projectData.industry,
+        description: projectData.description || undefined
+      });
+
+      if (newProject) {
+        // Navigate to the wizard with the new project ID
+        console.log("NewProject - project created successfully:", newProject);
+        toast.dismiss();
+        toast.success("Project created successfully!");
+        navigate(`/projects/${newProject.id}/wizard`);
+      } else {
+        console.error("NewProject - createProject returned null");
+        toast.dismiss();
+        throw new Error("Failed to create project - no project returned");
+      }
+    } catch (error) {
+      console.error("Error creating project:", error);
+      toast.dismiss();
+
+      // Show a more detailed error message
+      let errorMessage = "Failed to create project. Please try again.";
+      if (error instanceof Error) {
+        errorMessage = `Failed to create project: ${error.message}`;
+      }
+
+      toast.error(errorMessage);
+
+      // Add a suggestion for the user
+      if (errorMessage.includes("no project returned")) {
+        toast.error("This might be a temporary issue. Please try again in a few moments.", {
+          duration: 5000
+        });
+      }
+    } finally {
       setLoading(false);
-      // Navigate to the wizard with the new project ID
-      // In a real app, this would create a project in the backend and return an ID
-      navigate("/projects/new-project/wizard");
-    }, 1000);
+    }
   };
 
   return (
@@ -69,7 +121,7 @@ export default function NewProject() {
             <ArrowLeft size={16} className="mr-1" />
             Back to Dashboard
           </Button>
-          
+
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
