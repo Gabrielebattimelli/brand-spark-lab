@@ -113,6 +113,7 @@ export type Database = {
           status: string | null
           updated_at: string | null
           user_id: string
+          completion_percentage: number | null
         }
         Insert: {
           created_at?: string | null
@@ -123,6 +124,7 @@ export type Database = {
           status?: string | null
           updated_at?: string | null
           user_id: string
+          completion_percentage?: number | null
         }
         Update: {
           created_at?: string | null
@@ -133,6 +135,7 @@ export type Database = {
           status?: string | null
           updated_at?: string | null
           user_id?: string
+          completion_percentage?: number | null
         }
         Relationships: []
       }

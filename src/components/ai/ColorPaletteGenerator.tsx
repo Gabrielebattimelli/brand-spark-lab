@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sparkles, RefreshCw, CheckCircle, AlertCircle, Download } from "lucide-react";
+import { toast } from "@/components/ui/use-toast";
 
 interface ColorPaletteGeneratorProps {
   brandName: string;
@@ -44,13 +45,33 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
 
   const handleGeneratePalettes = async () => {
     // Check if the required API key is available
-    if (!geminiApiKey) {
-      setError("Gemini API key is required to generate color palettes");
+    if (!geminiApiKey || geminiApiKey.trim() === "") {
+      setError("Gemini API key is required to generate color palettes. Please set your API key in the settings.");
+      toast({
+        title: "API Key Missing",
+        description: "Please set your Gemini API key in the settings to generate color palettes.",
+        variant: "destructive",
+      });
       return;
     }
 
-    if (!brandName) {
+    if (!brandName?.trim()) {
       setError("Brand name is required to generate color palettes");
+      toast({
+        title: "Missing Information",
+        description: "Please provide a brand name to generate color palettes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!industry?.trim()) {
+      setError("Industry is required to generate color palettes");
+      toast({
+        title: "Missing Information",
+        description: "Please provide an industry to generate color palettes.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -59,13 +80,13 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
 
     try {
       const params: ColorPaletteGenerationParams = {
-        brandName,
-        industry,
-        brandPersonality,
+        brandName: brandName.trim(),
+        industry: industry.trim(),
+        brandPersonality: brandPersonality?.trim() || "professional and modern",
         aestheticPreferences: customPreference 
-          ? [...aestheticPreferences, customPreference] 
+          ? [...aestheticPreferences, customPreference.trim()] 
           : aestheticPreferences,
-        colorPreferences
+        colorPreferences: colorPreferences.length > 0 ? colorPreferences : undefined
       };
 
       const palettes = await generateColorPalettes(
@@ -74,6 +95,10 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
         3 // Generate 3 palette options
       );
 
+      if (!palettes || palettes.length === 0) {
+        throw new Error("No color palettes were generated");
+      }
+
       setGeneratedColorPalettes(palettes);
 
       // If no palette is selected yet, select the first one
@@ -81,60 +106,83 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
         setSelectedColorPalette(palettes[0]);
         onSelect(palettes[0]);
       }
+
+      // Show success message
+      toast({
+        title: "Color Palettes Generated",
+        description: "Successfully generated new color palettes for your brand.",
+      });
     } catch (err) {
       console.error("Error generating color palettes:", err);
-      setError("Failed to generate color palettes. Please try again.");
+      const errorMessage = err instanceof Error ? err.message : "Failed to generate color palettes";
+      setError(errorMessage);
+      toast({
+        title: "Generation Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
     } finally {
       setIsGeneratingPalettes(false);
     }
   };
 
   const handleRegeneratePalettes = async () => {
-    // Check if the required API key is available
-    if (!geminiApiKey) {
-      setError("Gemini API key is required to generate color palettes");
+    if (!selectedColorPalette) {
+      setError("Please select a palette to regenerate from");
+      toast({
+        title: "No Palette Selected",
+        description: "Please select a palette before regenerating.",
+        variant: "destructive",
+      });
       return;
     }
 
-    if (!feedback.trim()) {
-      setError("Please provide some feedback for regeneration");
-      return;
-    }
-
+    // Remove the feedback validation since it should be optional
     setError(null);
     setIsGeneratingPalettes(true);
 
     try {
       const params: ColorPaletteGenerationParams = {
-        brandName,
-        industry,
-        brandPersonality,
+        brandName: brandName.trim(),
+        industry: industry.trim(),
+        brandPersonality: brandPersonality?.trim() || "professional and modern",
         aestheticPreferences: customPreference 
-          ? [...aestheticPreferences, customPreference] 
+          ? [...aestheticPreferences, customPreference.trim()] 
           : aestheticPreferences,
-        colorPreferences
+        colorPreferences: colorPreferences.length > 0 ? colorPreferences : undefined
       };
 
       const palettes = await regenerateColorPalettes(
         geminiApiKey,
         params,
-        feedback,
-        3 // Generate 3 palette options
+        feedback.trim() || "Generate a new set of color palettes with similar style but different colors", // Provide default feedback if none given
+        3
       );
 
-      setGeneratedColorPalettes(palettes);
-
-      // If no palette is selected yet, select the first one
-      if (!selectedColorPalette && palettes.length > 0) {
-        setSelectedColorPalette(palettes[0]);
-        onSelect(palettes[0]);
+      if (!palettes || palettes.length === 0) {
+        throw new Error("No color palettes were generated");
       }
+
+      setGeneratedColorPalettes(palettes);
+      setSelectedColorPalette(palettes[0]);
+      onSelect(palettes[0]);
+      setFeedback(""); // Clear feedback after successful regeneration
+
+      toast({
+        title: "Palettes Regenerated",
+        description: "Successfully generated new color palettes.",
+      });
     } catch (err) {
       console.error("Error regenerating color palettes:", err);
-      setError("Failed to regenerate color palettes. Please try again.");
+      const errorMessage = err instanceof Error ? err.message : "Failed to regenerate color palettes";
+      setError(errorMessage);
+      toast({
+        title: "Regeneration Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
     } finally {
       setIsGeneratingPalettes(false);
-      setFeedback("");
     }
   };
 

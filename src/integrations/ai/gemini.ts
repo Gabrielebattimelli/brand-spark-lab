@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 // Define interfaces for statements with explanations
 export interface StatementWithExplanation {
@@ -21,26 +22,67 @@ export interface VoiceCharacteristic {
 
 // Initialize the Gemini API with the API key
 const initGeminiApi = (apiKey: string) => {
+  if (!apiKey) {
+    throw new Error('API key is required');
+  }
   return new GoogleGenerativeAI(apiKey);
 };
 
 // Define the model name to use for all Gemini API calls
 const MODEL_NAME = "gemini-1.5-pro";
 
-// Helper function to call the Edge Function
+// Helper function to call the Edge Function with retry logic
 const callEdgeFunction = async (type: string, data: Record<string, unknown>, apiKey: string) => {
-  const { data: generatedData, error } = await supabase.functions.invoke(
-    'generate-branding',
-    {
-      body: { type, data, apiKey },
-    }
-  );
+  const maxRetries = 3;
+  let retryCount = 0;
+  let lastError: Error | null = null;
 
-  if (error) {
-    throw new Error(error.message);
+  while (retryCount < maxRetries) {
+    try {
+      const { data: generatedData, error } = await supabase.functions.invoke(
+        'generate-branding',
+        {
+          body: { type, data, apiKey },
+        }
+      );
+
+      if (error) {
+        if (error.message.includes('rate limit') || error.message.includes('too many requests')) {
+          // Wait before retrying with exponential backoff
+          await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+          retryCount++;
+          lastError = error;
+          continue;
+        }
+        throw new Error(error.message);
+      }
+
+      if (!generatedData?.content) {
+        throw new Error('No content received from the API');
+      }
+
+      return generatedData.content;
+    } catch (error) {
+      if (retryCount < maxRetries - 1) {
+        retryCount++;
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+        lastError = error instanceof Error ? error : new Error('Unknown error');
+        continue;
+      }
+      throw lastError || error;
+    }
   }
 
-  return generatedData.content;
+  throw lastError || new Error('Failed to generate content after multiple retries');
+};
+
+// Helper function to parse response text
+const parseResponse = (text: string, pattern: RegExp): string => {
+  const matches = text.match(pattern);
+  if (!matches) {
+    throw new Error('Failed to parse response');
+  }
+  return matches[1].trim();
 };
 
 // Generate brand name ideas with explanations
@@ -85,19 +127,35 @@ export const generateBrandNames = async (
     const namesWithExplanations = nameBlocks
       .filter(block => block.trim().length > 0)
       .map(block => {
-        const nameMatch = block.match(/Name:\s*([^\n]+)/);
-        const explanationMatch = block.match(/Explanation:\s*([^\n]+(?:\n[^\n]+)*)/);
-
-        const name = nameMatch ? nameMatch[1].trim() : "";
-        const explanation = explanationMatch ? explanationMatch[1].trim() : "";
-
-        return { name, explanation };
+        try {
+          const name = parseResponse(block, /Name:\s*([^\n]+)/);
+          const explanation = parseResponse(block, /Explanation:\s*([^\n]+(?:\n[^\n]+)*)/);
+          return { name, explanation };
+        } catch (error) {
+          console.error('Failed to parse name block:', block);
+          return null;
+        }
       })
-      .filter(item => item.name && item.explanation);
+      .filter((item): item is { name: string; explanation: string } => 
+        item !== null && item.name && item.explanation
+      );
+
+    if (namesWithExplanations.length === 0) {
+      throw new Error('No valid brand names were generated');
+    }
 
     return namesWithExplanations;
   } catch (error) {
     console.error("Error generating brand names:", error);
+    if (error instanceof Error) {
+      if (error.message.includes('API key')) {
+        toast.error('Invalid API key');
+      } else if (error.message.includes('rate limit')) {
+        toast.error('Rate limit exceeded. Please try again later.');
+      } else {
+        toast.error('Failed to generate brand names');
+      }
+    }
     throw error;
   }
 };
@@ -127,22 +185,38 @@ export const generateMissionStatements = async (
     const statementsWithExplanations = statementBlocks
       .filter(block => block.trim().length > 0)
       .map(block => {
-        const statementMatch = block.match(/Statement:\s*([^\n]+(?:\n[^E][^\n]+)*)/);
-        const explanationMatch = block.match(/Explanation:\s*([^\n]+(?:\n[^S][^\n]+)*)/);
-
-        const statement = statementMatch ? statementMatch[1].trim() : "";
-        const explanation = explanationMatch ? explanationMatch[1].trim() : "";
-
-        return { statement, explanation };
+        try {
+          const statement = parseResponse(block, /Statement:\s*([^\n]+(?:\n[^E][^\n]+)*)/);
+          const explanation = parseResponse(block, /Explanation:\s*([^\n]+(?:\n[^S][^\n]+)*)/);
+          return { statement, explanation };
+        } catch (error) {
+          console.error('Failed to parse statement block:', block);
+          return null;
+        }
       })
-      .filter(item => item.statement && item.explanation);
+      .filter((item): item is StatementWithExplanation => 
+        item !== null && item.statement && item.explanation
+      );
 
-    return statementsWithExplanations.length > 0 ? statementsWithExplanations : [{ 
-      statement: content, 
-      explanation: "Generated mission statement based on your business details." 
-    }];
+    if (statementsWithExplanations.length === 0) {
+      return [{ 
+        statement: content, 
+        explanation: "Generated mission statement based on your business details." 
+      }];
+    }
+
+    return statementsWithExplanations;
   } catch (error) {
     console.error("Error generating mission statements:", error);
+    if (error instanceof Error) {
+      if (error.message.includes('API key')) {
+        toast.error('Invalid API key');
+      } else if (error.message.includes('rate limit')) {
+        toast.error('Rate limit exceeded. Please try again later.');
+      } else {
+        toast.error('Failed to generate mission statements');
+      }
+    }
     throw error;
   }
 };

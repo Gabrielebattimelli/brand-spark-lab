@@ -6,7 +6,7 @@ export interface ColorPaletteGenerationParams {
   industry: string;
   brandPersonality: string;
   aestheticPreferences: string[];
-  colorPreferences: string[];
+  colorPreferences?: string[];
 }
 
 // Interface for a color in the palette
@@ -36,26 +36,75 @@ export const generateColorPalettes = async (
   try {
     console.log("Generating color palettes with Gemini...");
     
+    // Validate API key
+    if (!apiKey || apiKey.trim() === "") {
+      throw new Error("Gemini API key is required");
+    }
+
     // Initialize the Gemini API with the API key
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
+    // Validate input parameters
+    if (!params.brandName?.trim()) {
+      throw new Error("Brand name is required");
+    }
+
+    if (!params.industry?.trim()) {
+      throw new Error("Industry is required");
+    }
+
+    // Ensure aestheticPreferences is an array
+    if (!Array.isArray(params.aestheticPreferences)) {
+      params.aestheticPreferences = [];
+    }
+
+    // Ensure colorPreferences is an array if provided
+    if (params.colorPreferences && !Array.isArray(params.colorPreferences)) {
+      params.colorPreferences = [];
+    }
+
     // Construct a prompt for the color palette generation
     const prompt = `
-      Create ${count} distinct color palettes for a brand with the following details:
+      Create ${count} distinct and personalized color palettes for a brand with the following details:
       
       Brand Name: ${params.brandName}
       Industry: ${params.industry}
-      Brand Personality: ${params.brandPersonality}
-      Aesthetic Preferences: ${params.aestheticPreferences.join(", ")}
-      Color Preferences: ${params.colorPreferences.join(", ")}
+      Brand Personality: ${params.brandPersonality || "professional and modern"}
+      Visual Style: ${params.aestheticPreferences[0] || "clean and modern"}
+      Additional Aesthetic Preferences: ${params.aestheticPreferences.slice(1).join(", ") || "none"}
+      Color Preferences: ${params.colorPreferences?.join(", ") || "any suitable colors"}
       
-      For each palette, provide 5 colors:
-      1. Primary - The main brand color
-      2. Secondary - A complementary color to the primary
-      3. Accent - A color for highlights and calls-to-action
-      4. Light - A light color for backgrounds
-      5. Dark - A dark color for text and contrast
+      For each palette, provide 5 colors that:
+      1. Primary - The main brand color that:
+         - Aligns with the visual style and brand personality
+         - Is distinctive and memorable
+         - Works well in both light and dark contexts
+      2. Secondary - A complementary color that:
+         - Creates visual harmony with the primary color
+         - Supports the brand's aesthetic preferences
+         - Can be used for secondary elements and backgrounds
+      3. Accent - A color for highlights that:
+         - Creates visual interest and draws attention
+         - Works well for calls-to-action
+         - Complements both primary and secondary colors
+      4. Light - A background color that:
+         - Provides good contrast with text
+         - Is easy on the eyes
+         - Works well with the other colors
+      5. Dark - A text color that:
+         - Ensures readability
+         - Creates sufficient contrast with light backgrounds
+         - Maintains brand consistency
+      
+      Important guidelines:
+      - Ensure all colors are web-safe and accessible
+      - Maintain WCAG 2.1 AA contrast standards
+      - Colors should reflect the brand's personality and industry
+      - Consider the psychological impact of colors based on the brand's context
+      - Include both warm and cool tones for balance
+      - If specific color preferences are provided, incorporate them meaningfully
+      - Ensure colors work well together in various combinations
       
       Format your response as a JSON array with the following structure:
       [
@@ -72,48 +121,79 @@ export const generateColorPalettes = async (
         ...
       ]
       
-      Ensure the colors in each palette work well together and reflect the brand's personality and industry.
-      The colors should be accessible and have sufficient contrast for text readability.
-      Include the RGB values as comma-separated numbers.
       Only respond with the JSON array, no additional text.
     `;
 
-    // Generate content using Gemini API
-    const result = await model.generateContent(prompt);
-    const generatedContent = result.response.text();
-    
-    // Parse the JSON response
-    let palettes: GeneratedColorPalette[] = [];
-    
+    let response;
     try {
-      // Try to parse the response as JSON
-      palettes = JSON.parse(generatedContent);
-      
-      // Add selected property to each palette
-      palettes = palettes.map((palette, index) => ({
-        ...palette,
-        selected: index === 0 // Select the first palette by default
-      }));
+      const result = await model.generateContent(prompt);
+      response = result.response.text();
     } catch (error) {
-      console.error("Error parsing color palette JSON:", error);
-      
-      // Fallback to default palettes if parsing fails
-      palettes = generateDefaultPalettes(count, params);
+      console.error("Error calling Gemini API:", error);
+      throw new Error("Failed to generate color palettes. Please check your API key and try again.");
     }
-    
+
+    // Parse and validate the response
+    let palettes: GeneratedColorPalette[];
+    try {
+      palettes = JSON.parse(response);
+    } catch (error) {
+      console.error("Failed to parse response:", response);
+      throw new Error("Failed to parse color palette response. The AI might have returned an invalid format.");
+    }
+
+    // Validate the structure of each palette
+    if (!Array.isArray(palettes)) {
+      throw new Error("Invalid response format: expected an array of palettes");
+    }
+
+    palettes.forEach((palette, index) => {
+      if (!palette.id || !palette.colors || !Array.isArray(palette.colors)) {
+        throw new Error(`Invalid palette structure at index ${index}. Missing required fields: id, colors`);
+      }
+
+      // Validate each color in the palette
+      palette.colors.forEach((color, colorIndex) => {
+        if (!color.name || !color.hex || !color.rgb) {
+          throw new Error(`Invalid color structure in palette ${index}, color ${colorIndex}. Missing required fields: name, hex, rgb`);
+        }
+
+        // Validate hex color format
+        if (!/^#[0-9A-Fa-f]{6}$/i.test(color.hex)) {
+          throw new Error(`Invalid hex color format in palette ${index}, color ${colorIndex}: ${color.hex}`);
+        }
+
+        // Validate RGB format - make it more flexible
+        const rgbMatch = color.rgb.match(/^\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*$/);
+        if (!rgbMatch) {
+          throw new Error(`Invalid RGB format in palette ${index}, color ${colorIndex}: ${color.rgb}`);
+        }
+
+        // Validate RGB values are within range
+        const [r, g, b] = rgbMatch.slice(1).map(Number);
+        if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
+          throw new Error(`RGB values out of range in palette ${index}, color ${colorIndex}: ${color.rgb}`);
+        }
+      });
+    });
+
+    // Add selected property if not present
+    palettes = palettes.map((palette, index) => ({
+      ...palette,
+      selected: palette.selected ?? (index === 0)
+    }));
+
     return palettes;
   } catch (error) {
     console.error("Error generating color palettes:", error);
-    
-    // Return default palettes in case of error
-    return generateDefaultPalettes(count, params);
+    throw error;
   }
 };
 
 /**
  * Generates default color palettes as a fallback
  */
-const generateDefaultPalettes = (
+export const generateDefaultPalettes = (
   count: number,
   params: ColorPaletteGenerationParams
 ): GeneratedColorPalette[] => {
@@ -179,22 +259,156 @@ export const regenerateColorPalettes = async (
   count: number = 3
 ): Promise<GeneratedColorPalette[]> => {
   try {
+    // Validate API key
+    if (!apiKey || apiKey.trim() === "") {
+      throw new Error("Gemini API key is required");
+    }
+
+    // Initialize the Gemini API with the API key
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+
     // Adjust the parameters based on feedback
     const adjustedParams = { ...params };
     
-    // Simple feedback handling
-    if (feedback.includes("brighter") || feedback.includes("vibrant")) {
-      adjustedParams.aestheticPreferences = [...params.aestheticPreferences, "bright", "vibrant", "colorful"];
-    } else if (feedback.includes("darker") || feedback.includes("muted")) {
-      adjustedParams.aestheticPreferences = [...params.aestheticPreferences, "dark", "muted", "subdued"];
-    } else if (feedback.includes("professional")) {
-      adjustedParams.aestheticPreferences = [...params.aestheticPreferences, "professional", "corporate", "clean"];
-    } else if (feedback.includes("creative")) {
-      adjustedParams.aestheticPreferences = [...params.aestheticPreferences, "creative", "artistic", "expressive"];
+    // Enhanced feedback handling
+    if (feedback.toLowerCase().includes("brighter") || feedback.toLowerCase().includes("vibrant")) {
+      adjustedParams.aestheticPreferences = [...params.aestheticPreferences, "bright", "vibrant", "colorful", "energetic"];
+    } else if (feedback.toLowerCase().includes("darker") || feedback.toLowerCase().includes("muted")) {
+      adjustedParams.aestheticPreferences = [...params.aestheticPreferences, "dark", "muted", "subdued", "sophisticated"];
+    } else if (feedback.toLowerCase().includes("professional")) {
+      adjustedParams.aestheticPreferences = [...params.aestheticPreferences, "professional", "corporate", "clean", "sleek"];
+    } else if (feedback.toLowerCase().includes("creative")) {
+      adjustedParams.aestheticPreferences = [...params.aestheticPreferences, "creative", "artistic", "expressive", "innovative"];
+    } else if (feedback.toLowerCase().includes("warm")) {
+      adjustedParams.aestheticPreferences = [...params.aestheticPreferences, "warm", "inviting", "friendly"];
+    } else if (feedback.toLowerCase().includes("cool")) {
+      adjustedParams.aestheticPreferences = [...params.aestheticPreferences, "cool", "calm", "serene"];
     }
-    
-    // Generate new palettes with adjusted parameters
-    return generateColorPalettes(apiKey, adjustedParams, count);
+
+    // Construct a prompt for the color palette regeneration
+    const prompt = `
+      Regenerate ${count} distinct and personalized color palettes for a brand with the following details:
+      
+      Brand Name: ${adjustedParams.brandName}
+      Industry: ${adjustedParams.industry}
+      Brand Personality: ${adjustedParams.brandPersonality || "professional and modern"}
+      Visual Style: ${adjustedParams.aestheticPreferences[0] || "clean and modern"}
+      Additional Aesthetic Preferences: ${adjustedParams.aestheticPreferences.slice(1).join(", ") || "none"}
+      Color Preferences: ${adjustedParams.colorPreferences?.join(", ") || "any suitable colors"}
+      
+      User Feedback: ${feedback}
+      
+      For each palette, provide 5 colors that:
+      1. Primary - The main brand color that:
+         - Aligns with the visual style and brand personality
+         - Is distinctive and memorable
+         - Works well in both light and dark contexts
+      2. Secondary - A complementary color that:
+         - Creates visual harmony with the primary color
+         - Supports the brand's aesthetic preferences
+         - Can be used for secondary elements and backgrounds
+      3. Accent - A color for highlights that:
+         - Creates visual interest and draws attention
+         - Works well for calls-to-action
+         - Complements both primary and secondary colors
+      4. Light - A background color that:
+         - Provides good contrast with text
+         - Is easy on the eyes
+         - Works well with the other colors
+      5. Dark - A text color that:
+         - Ensures readability
+         - Creates sufficient contrast with light backgrounds
+         - Maintains brand consistency
+      
+      Important guidelines:
+      - Ensure all colors are web-safe and accessible
+      - Maintain WCAG 2.1 AA contrast standards
+      - Colors should reflect the brand's personality and industry
+      - Consider the psychological impact of colors based on the brand's context
+      - Include both warm and cool tones for balance
+      - If specific color preferences are provided, incorporate them meaningfully
+      - Ensure colors work well together in various combinations
+      - Take into account the user's feedback when generating the new palettes
+      
+      Format your response as a JSON array with the following structure:
+      [
+        {
+          "id": "palette-1",
+          "colors": [
+            {"name": "Primary", "hex": "#HEXCODE", "rgb": "R, G, B"},
+            {"name": "Secondary", "hex": "#HEXCODE", "rgb": "R, G, B"},
+            {"name": "Accent", "hex": "#HEXCODE", "rgb": "R, G, B"},
+            {"name": "Light", "hex": "#HEXCODE", "rgb": "R, G, B"},
+            {"name": "Dark", "hex": "#HEXCODE", "rgb": "R, G, B"}
+          ]
+        },
+        ...
+      ]
+      
+      Only respond with the JSON array, no additional text.
+    `;
+
+    let response;
+    try {
+      const result = await model.generateContent(prompt);
+      response = result.response.text();
+    } catch (error) {
+      console.error("Error calling Gemini API:", error);
+      throw new Error("Failed to regenerate color palettes. Please check your API key and try again.");
+    }
+
+    // Parse and validate the response
+    let palettes: GeneratedColorPalette[];
+    try {
+      palettes = JSON.parse(response);
+    } catch (error) {
+      console.error("Failed to parse response:", response);
+      throw new Error("Failed to parse color palette response. The AI might have returned an invalid format.");
+    }
+
+    // Validate the structure of each palette
+    if (!Array.isArray(palettes)) {
+      throw new Error("Invalid response format: expected an array of palettes");
+    }
+
+    palettes.forEach((palette, index) => {
+      if (!palette.id || !palette.colors || !Array.isArray(palette.colors)) {
+        throw new Error(`Invalid palette structure at index ${index}. Missing required fields: id, colors`);
+      }
+
+      // Validate each color in the palette
+      palette.colors.forEach((color, colorIndex) => {
+        if (!color.name || !color.hex || !color.rgb) {
+          throw new Error(`Invalid color structure in palette ${index}, color ${colorIndex}. Missing required fields: name, hex, rgb`);
+        }
+
+        // Validate hex color format
+        if (!/^#[0-9A-Fa-f]{6}$/i.test(color.hex)) {
+          throw new Error(`Invalid hex color format in palette ${index}, color ${colorIndex}: ${color.hex}`);
+        }
+
+        // Validate RGB format - make it more flexible
+        const rgbMatch = color.rgb.match(/^\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*$/);
+        if (!rgbMatch) {
+          throw new Error(`Invalid RGB format in palette ${index}, color ${colorIndex}: ${color.rgb}`);
+        }
+
+        // Validate RGB values are within range
+        const [r, g, b] = rgbMatch.slice(1).map(Number);
+        if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
+          throw new Error(`RGB values out of range in palette ${index}, color ${colorIndex}: ${color.rgb}`);
+        }
+      });
+    });
+
+    // Add selected property if not present
+    palettes = palettes.map((palette, index) => ({
+      ...palette,
+      selected: palette.selected ?? (index === 0)
+    }));
+
+    return palettes;
   } catch (error) {
     console.error("Error regenerating color palettes:", error);
     throw error;

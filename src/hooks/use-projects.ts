@@ -13,12 +13,22 @@ export interface Project {
   updated_at: string;
 }
 
+interface SupabaseProject {
+  created_at: string | null;
+  description: string | null;
+  id: string;
+  industry: string | null;
+  name: string;
+  status: 'draft' | 'in-progress' | 'completed' | null;
+  updated_at: string | null;
+  user_id: string;
+  completion_percentage: number | null;
+}
+
 export const useProjects = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
-
-  console.log("useProjects hook - user:", user);
 
   const getProjects = useCallback(async (): Promise<Project[]> => {
     console.log("getProjects - starting");
@@ -31,38 +41,59 @@ export const useProjects = () => {
     setLoading(true);
     setError(null);
 
-    try {
-      console.log("getProjects - fetching projects for user:", user.id);
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false });
+    const maxRetries = 3;
+    let retryCount = 0;
 
-      if (error) {
-        console.error("getProjects - error:", error);
+    while (retryCount < maxRetries) {
+      try {
+        console.log(`getProjects - attempt ${retryCount + 1} of ${maxRetries}`);
+        const { data, error } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('updated_at', { ascending: false });
 
-        // Check for specific error types
-        if (error.code === 'PGRST301') {
-          throw new Error('Database connection error. Please try again later.');
-        } else if (error.code === '42501') {
-          throw new Error('Permission denied. You may not have access to this resource.');
-        } else {
-          throw new Error(error.message);
+        if (error) {
+          console.error("getProjects - error:", error);
+
+          // Check for specific error types
+          if (error.code === 'PGRST301') {
+            throw new Error('Database connection error. Please try again later.');
+          } else if (error.code === '42501') {
+            throw new Error('Permission denied. You may not have access to this resource.');
+          } else if (error.message.includes('insufficient resources')) {
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+            retryCount++;
+            continue;
+          } else {
+            throw new Error(error.message);
+          }
         }
-      }
 
-      console.log("getProjects - success, projects:", data);
-      return data || [];
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch projects';
-      console.error("getProjects - caught error:", message);
-      setError(message);
-      return [];
-    } finally {
-      setLoading(false);
-      console.log("getProjects - finished, loading set to false");
+        console.log("getProjects - success, projects:", data);
+        // Transform Supabase project data to our Project type
+        return (data as SupabaseProject[]).map(project => ({
+          ...project,
+          status: (project.status as "draft" | "in-progress" | "completed") || "draft"
+        }));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to fetch projects';
+        console.error(`getProjects - attempt ${retryCount + 1} failed:`, message);
+        
+        if (retryCount === maxRetries - 1) {
+          setError(message);
+          return [];
+        }
+        
+        retryCount++;
+        // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+      }
     }
+
+    setLoading(false);
+    return [];
   }, [user, setLoading, setError]);
 
   const getProject = useCallback(async (id: string): Promise<Project | null> => {
@@ -71,25 +102,73 @@ export const useProjects = () => {
     setLoading(true);
     setError(null);
 
-    try {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('id', id)
-        .eq('user_id', user.id)
-        .single();
+    const maxRetries = 3;
+    let retryCount = 0;
+    let lastError: Error | null = null;
 
-      if (error) throw new Error(error.message);
+    while (retryCount < maxRetries) {
+      try {
+        console.log(`getProject - attempt ${retryCount + 1} of ${maxRetries}`);
+        const { data, error } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .single();
 
-      return data;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch project';
-      setError(message);
-      return null;
-    } finally {
-      setLoading(false);
+        if (error) {
+          if (error.message.includes('insufficient resources')) {
+            // Wait longer between retries
+            await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1)));
+            retryCount++;
+            lastError = error;
+            continue;
+          }
+          throw error;
+        }
+
+        if (!data) {
+          setLoading(false);
+          return null;
+        }
+
+        // Transform Supabase project data to our Project type
+        const project: Project = {
+          id: data.id,
+          name: data.name,
+          industry: data.industry || '',
+          description: data.description || null,
+          status: data.status === 'draft' || data.status === 'in-progress' || data.status === 'completed' 
+            ? data.status 
+            : 'draft',
+          completion_percentage: data.completion_percentage || 0,
+          created_at: data.created_at || new Date().toISOString(),
+          updated_at: data.updated_at || new Date().toISOString()
+        };
+
+        setLoading(false);
+        return project;
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error('Failed to fetch project');
+        console.error(`getProject - attempt ${retryCount + 1} failed:`, error.message);
+        lastError = error;
+        
+        if (retryCount === maxRetries - 1) {
+          setError(error.message);
+          setLoading(false);
+          return null;
+        }
+        
+        retryCount++;
+        // Exponential backoff with a maximum delay
+        const delay = Math.min(2000 * Math.pow(2, retryCount), 10000);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
-  }, [user, setLoading, setError]);
+
+    setLoading(false);
+    return null;
+  }, [user]);
 
   const createProject = useCallback(async (project: {
     name: string;
@@ -106,73 +185,55 @@ export const useProjects = () => {
     setLoading(true);
     setError(null);
 
-    try {
-      const newProject = {
-        ...project,
-        user_id: user.id,
-        status: 'draft' as const,
-        completion_percentage: 0,
-      };
+    const maxRetries = 3;
+    let retryCount = 0;
 
-      console.log("createProject - inserting new project:", newProject);
+    while (retryCount < maxRetries) {
+      try {
+        console.log(`createProject - attempt ${retryCount + 1} of ${maxRetries}`);
+        const { data, error } = await supabase
+          .from('projects')
+          .insert({
+            name: project.name,
+            industry: project.industry,
+            description: project.description,
+            user_id: user.id,
+            status: 'draft' as const,
+            completion_percentage: 0
+          })
+          .select()
+          .single();
 
-      // First, insert the new project
-      const { error: insertError } = await supabase
-        .from('projects')
-        .insert([newProject]);
-
-      if (insertError) {
-        console.error("createProject - insert error:", insertError);
-
-        // Check for specific error types
-        if (insertError.code === 'PGRST301') {
-          throw new Error('Database connection error. Please try again later.');
-        } else if (insertError.code === '42501') {
-          throw new Error('Permission denied. You may not have access to create projects.');
-        } else if (insertError.code === '23505') {
-          throw new Error('A project with this name already exists. Please choose a different name.');
-        } else {
-          throw new Error(insertError.message);
+        if (error) {
+          if (error.message.includes('insufficient resources')) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+            retryCount++;
+            continue;
+          }
+          throw new Error(error.message);
         }
+
+        // Transform Supabase project data to our Project type
+        return data ? {
+          ...data,
+          status: (data.status as "draft" | "in-progress" | "completed") || "draft"
+        } : null;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to create project';
+        console.error(`createProject - attempt ${retryCount + 1} failed:`, message);
+        
+        if (retryCount === maxRetries - 1) {
+          setError(message);
+          return null;
+        }
+        
+        retryCount++;
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
       }
-
-      // Add a small delay to ensure the insert has been processed
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      console.log("createProject - fetching newly created project");
-
-      // Then, fetch the newly created project
-      // We need to query by user_id and name since we don't have the ID yet
-      const { data, error: selectError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('name', project.name)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (selectError) {
-        console.error("createProject - select error:", selectError);
-        throw new Error('Project was created but could not be retrieved. Please check your projects list.');
-      }
-
-      if (!data) {
-        console.error("createProject - no data returned from select");
-        throw new Error('Project was created but no data was returned. Please check your projects list.');
-      }
-
-      console.log("createProject - success, created project:", data);
-      return data;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create project';
-      console.error("createProject - caught error:", message);
-      setError(message);
-      return null;
-    } finally {
-      setLoading(false);
-      console.log("createProject - finished, loading set to false");
     }
+
+    setLoading(false);
+    return null;
   }, [user, setLoading, setError]);
 
   const updateProject = useCallback(async (

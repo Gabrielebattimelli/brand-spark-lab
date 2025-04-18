@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +8,7 @@ import { useAIGeneration } from "@/hooks/use-ai-generation";
 import { toast } from "@/components/ui/use-toast";
 
 interface BrandStoryData {
+  [key: string]: unknown;  // Add index signature
   mission: string;
   vision: string;
   values: string[];
@@ -16,6 +16,8 @@ interface BrandStoryData {
   industry?: string;
   businessName?: string;
   productService?: string;
+  demographics?: string;
+  personalityTraits?: string;
 }
 
 interface BrandStoryProps {
@@ -78,6 +80,8 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
       industry: data.industry || 'technology',
       name: data.businessName || 'Your Business',
       productService: data.productService || 'provides innovative solutions',
+      targetAudience: data.demographics || {},
+      brandPersonality: data.personalityTraits || {}
     };
 
     // Set loading state for this specific section
@@ -86,18 +90,28 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
     try {
       const content = await generate(type, projectData);
       if (content) {
-        // Create a deep copy of the current form data to avoid mutation issues
         const updatedData = { ...formData };
 
         if (type === 'values') {
-          // Parse values from the AI response
+          // Parse values from the AI response with improved error handling
           const valuesList = content
             .split('\n')
             .filter(line => line.trim().startsWith('Value:'))
-            .map(line => line.replace('Value:', '').trim());
+            .map(line => {
+              const match = line.match(/Value:\s*(.*?)(?:\s*-\s*(.*))?$/);
+              return match ? match[1].trim() : line.replace('Value:', '').trim();
+            })
+            .filter(value => value.length > 0);
+
+          if (valuesList.length === 0) {
+            throw new Error('No valid values were generated');
+          }
 
           updatedData.values = valuesList;
         } else {
+          if (!content.trim()) {
+            throw new Error(`Generated ${type} is empty`);
+          }
           updatedData[type] = content;
         }
 
@@ -109,13 +123,13 @@ export const BrandStory = ({ data, onChange }: BrandStoryProps) => {
         });
       }
     } catch (error) {
+      console.error(`Error generating ${type}:`, error);
       toast({
         title: "Generation Failed",
-        description: "Failed to generate content. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to generate content. Please try again.",
         variant: "destructive",
       });
     } finally {
-      // Reset loading state for this specific section
       setLoadingStates(prev => ({ ...prev, [type]: false }));
     }
   };

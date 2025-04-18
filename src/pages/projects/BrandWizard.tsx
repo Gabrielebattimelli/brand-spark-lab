@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAI } from "@/contexts/AIContext";
 import { useProjects } from "@/hooks/use-projects";
@@ -12,15 +11,190 @@ import { BrandPersonality } from "@/components/wizard/steps/BrandPersonality";
 import { BrandStory } from "@/components/wizard/steps/BrandStory";
 import { Competition } from "@/components/wizard/steps/Competition";
 import { Aesthetics } from "@/components/wizard/steps/Aesthetics";
+import { LogoGeneration } from "@/components/wizard/steps/LogoGeneration";
 import { Results } from "@/components/wizard/steps/Results";
 import { APIKeySetup } from "@/components/ai/APIKeySetup";
 import { BrandNameGenerator } from "@/components/ai/BrandNameGenerator";
 import { BrandStatementGenerator } from "@/components/ai/BrandStatementGenerator";
 import { ColorPaletteGenerator } from "@/components/ai/ColorPaletteGenerator";
-import { LogoGenerator } from "@/components/ai/LogoGenerator";
 import { GeneratedLogo } from "@/integrations/ai/ideogram";
 import { GeneratedColorPalette } from "@/integrations/ai/colorPalette";
 import { toast } from "sonner";
+import { BrandNameGeneratorStep } from "@/components/wizard/steps/BrandNameGeneratorStep";
+
+// Define the form data type
+export interface FormData {
+  industry: string;
+  businessName: string;
+  brandName: string;
+  productService: string;
+  uniqueSellingProposition: string;
+
+  demographics: {
+    ageRange: string;
+    gender: string;
+    location: string;
+    income: string;
+    education: string;
+  };
+  psychographics: {
+    interests: string[];
+    values: string[];
+    painPoints: string[];
+    goals: string[];
+  };
+
+  personalityTraits: {
+    playfullnessVsSerious: number;
+    modernVsTraditional: number;
+    luxuriousVsAccessible: number;
+    boldVsSubtle: number;
+    formalVsRelaxed: number;
+  };
+  selectedArchetype: string;
+
+  mission: string;
+  vision: string;
+  values: string[];
+  originStory: string;
+
+  competitors: Array<{
+    name: string;
+    strengths: string;
+    weaknesses: string;
+  }>;
+  differentiators: string[];
+
+  visualStyle: string;
+  colorPreferences: string[];
+  inspirationKeywords: string[];
+  moodboardUrls: string[];
+
+  logo: GeneratedLogo | null;
+
+  aiGenerated: {
+    brandName: string;
+    mission: string;
+    vision: string;
+    valueProposition: string;
+    brandEssence: string;
+    brandVoice: string;
+    colorPalette: GeneratedColorPalette | null;
+    logo: GeneratedLogo | null;
+  };
+}
+
+// Define the steps in order
+const STEPS: string[] = [
+  'api-setup',
+  'basics',
+  'brand-name-generator',
+  'audience',
+  'personality',
+  'story',
+  'competition',
+  'aesthetics',
+  'logo',
+  'results'
+];
+
+// Define the initial form data
+const INITIAL_FORM_DATA: FormData = {
+  industry: "",
+  businessName: "",
+  brandName: "",
+  productService: "",
+  uniqueSellingProposition: "",
+
+  demographics: {
+    ageRange: "",
+    gender: "",
+    location: "",
+    income: "",
+    education: "",
+  },
+  psychographics: {
+    interests: [],
+    values: [],
+    painPoints: [],
+    goals: [],
+  },
+
+  personalityTraits: {
+    playfullnessVsSerious: 50,
+    modernVsTraditional: 50,
+    luxuriousVsAccessible: 50,
+    boldVsSubtle: 50,
+    formalVsRelaxed: 50,
+  },
+  selectedArchetype: "",
+
+  mission: "",
+  vision: "",
+  values: [],
+  originStory: "",
+
+  competitors: [],
+  differentiators: [],
+
+  visualStyle: "",
+  colorPreferences: [],
+  inspirationKeywords: [],
+  moodboardUrls: [],
+
+  logo: null,
+
+  aiGenerated: {
+    brandName: "",
+    mission: "",
+    vision: "",
+    valueProposition: "",
+    brandEssence: "",
+    brandVoice: "",
+    colorPalette: null,
+    logo: null,
+  }
+};
+
+// Update the component props interfaces
+interface BusinessBasicsProps {
+  data: FormData;
+  onChange: (data: Partial<FormData>) => void;
+}
+
+interface TargetAudienceProps {
+  data: FormData;
+  onChange: (data: Partial<FormData>) => void;
+}
+
+interface BrandPersonalityProps {
+  data: FormData;
+  onChange: (data: Partial<FormData>) => void;
+}
+
+interface BrandStoryProps {
+  data: FormData;
+  onChange: (data: Partial<FormData>) => void;
+}
+
+interface CompetitionProps {
+  data: FormData;
+  onChange: (data: Partial<FormData>) => void;
+}
+
+interface AestheticsProps {
+  data: FormData;
+  onChange: (data: Partial<FormData>) => void;
+}
+
+interface WizardLayoutProps {
+  currentStep: string;
+  onNext: () => Promise<void>;
+  onPrevious: () => void;
+  canProceed: boolean;
+  isSaving: boolean;
+  children: React.ReactNode;
+}
 
 export default function BrandWizard() {
   const navigate = useNavigate();
@@ -28,6 +202,8 @@ export default function BrandWizard() {
   const [currentStep, setCurrentStep] = useState("api-setup");
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA);
+  const [stepsValidity, setStepsValidity] = useState<Record<string, boolean>>({});
 
   // Initialize hooks
   const { getProject } = useProjects();
@@ -47,68 +223,6 @@ export default function BrandWizard() {
     resetGeneratedContent
   } = useAI();
 
-  // Load and store project data in state
-  const [formData, setFormData] = useState({
-    // Business Basics
-    industry: "",
-    businessName: "",
-    productService: "",
-    uniqueSellingProposition: "",
-
-    // Target Audience
-    demographics: {
-      ageRange: "",
-      gender: "",
-      location: "",
-      income: "",
-      education: "",
-    },
-    psychographics: {
-      interests: [],
-      values: [],
-      painPoints: [],
-      goals: [],
-    },
-
-    // Brand Personality
-    personalityTraits: {
-      playfullnessVsSerious: 50, // Scale from 0-100
-      modernVsTraditional: 50,
-      luxuriousVsAccessible: 50,
-      boldVsSubtle: 50,
-      formalVsRelaxed: 50,
-    },
-    selectedArchetype: "",
-
-    // Brand Story
-    mission: "",
-    vision: "",
-    values: [],
-    originStory: "",
-
-    // Competition
-    competitors: [],
-    differentiators: [],
-
-    // Aesthetics
-    visualStyle: "",
-    colorPreferences: [],
-    inspirationKeywords: [],
-    moodboardUrls: [],
-
-    // AI Generated Content
-    aiGenerated: {
-      brandName: "",
-      mission: "",
-      vision: "",
-      valueProposition: "",
-      brandEssence: "",
-      brandVoice: "",
-      colorPalette: null as GeneratedColorPalette | null,
-      logo: null as GeneratedLogo | null,
-    }
-  });
-
   // Load project data when component mounts
   useEffect(() => {
     const loadProjectData = async () => {
@@ -118,35 +232,49 @@ export default function BrandWizard() {
       }
 
       try {
-        // Load project info
+        // Load project info first
         const project = await getProject(projectId);
-        if (project) {
-          setFormData(prev => ({
-            ...prev,
-            industry: project.industry || "",
-            businessName: project.name || ""
-          }));
+        if (!project) {
+          toast.error("Project not found");
+          navigate("/dashboard");
+          return;
         }
 
-        // Load step data
+        setFormData(prev => ({
+          ...prev,
+          industry: project.industry || "",
+          businessName: project.name || ""
+        }));
+
+        // For new projects (completion_percentage = 0), set to first step
+        if (project.completion_percentage === 0) {
+          setCurrentStep("api-setup");
+          setIsLoading(false);
+          return;
+        }
+
+        // Load step data in parallel to improve performance
         const stepsToLoad: StepType[] = ['basics', 'audience', 'personality', 'story', 'competition', 'aesthetics', 'results'];
-        for (const step of stepsToLoad) {
-          const stepData = await getStepData(step);
-          if (stepData) {
-            setFormData(prev => ({
-              ...prev,
-              ...stepData
-            }));
-
-            // Mark step as valid
-            setStepsValidity(prev => ({
-              ...prev,
-              [step]: true
-            }));
+        const stepDataPromises = stepsToLoad.map(async (step) => {
+          try {
+            const stepData = await getStepData(step);
+            if (stepData && typeof stepData === 'object' && Object.keys(stepData).length > 0) {
+              setFormData(prev => ({
+                ...prev,
+                ...(stepData as Partial<FormData>)
+              }));
+              setStepsValidity(prev => ({
+                ...prev,
+                [step]: true
+              }));
+            }
+          } catch (error) {
+            console.error(`Error loading step ${step}:`, error);
+            toast.error(`Failed to load ${step} data`);
           }
-        }
+        });
 
-        // Load generated assets
+        // Load assets in parallel
         const assetTypes: AssetType[] = [
           'brand_name', 
           'mission_statement', 
@@ -158,694 +286,426 @@ export default function BrandWizard() {
           'logo'
         ];
 
-        for (const type of assetTypes) {
-          const asset = await getAsset(type);
-          if (asset) {
-            switch (type) {
-              case 'brand_name':
-                setFormData(prev => ({
-                  ...prev,
-                  aiGenerated: {
-                    ...prev.aiGenerated,
-                    brandName: asset.content
-                  }
-                }));
-                setStepsValidity(prev => ({ ...prev, "ai-name": true }));
-                break;
-              case 'mission_statement':
-                setFormData(prev => ({
-                  ...prev,
-                  aiGenerated: {
-                    ...prev.aiGenerated,
-                    mission: asset.content
-                  }
-                }));
-                break;
-              case 'vision_statement':
-                setFormData(prev => ({
-                  ...prev,
-                  aiGenerated: {
-                    ...prev.aiGenerated,
-                    vision: asset.content
-                  }
-                }));
-                break;
-              case 'value_proposition':
-                setFormData(prev => ({
-                  ...prev,
-                  aiGenerated: {
-                    ...prev.aiGenerated,
-                    valueProposition: asset.content
-                  }
-                }));
-                break;
-              case 'brand_essence':
-                setFormData(prev => ({
-                  ...prev,
-                  aiGenerated: {
-                    ...prev.aiGenerated,
-                    brandEssence: asset.content
-                  }
-                }));
-                break;
-              case 'brand_voice':
-                setFormData(prev => ({
-                  ...prev,
-                  aiGenerated: {
-                    ...prev.aiGenerated,
-                    brandVoice: asset.content
-                  }
-                }));
-                setStepsValidity(prev => ({ ...prev, "ai-statements": true }));
-                break;
-              case 'color_palette':
-                try {
-                  const palette = JSON.parse(asset.content);
+        const assetPromises = assetTypes.map(async (type) => {
+          try {
+            const asset = await getAsset(type);
+            if (asset) {
+              const content = asset.content;
+              switch (type) {
+                case 'brand_name':
                   setFormData(prev => ({
                     ...prev,
                     aiGenerated: {
                       ...prev.aiGenerated,
-                      colorPalette: palette
+                      brandName: content
                     }
                   }));
-                  setStepsValidity(prev => ({ ...prev, "aesthetics": true }));
-                } catch (err) {
-                  console.error('Failed to parse color palette:', err);
-                }
-                break;
-              case 'logo':
-                try {
-                  const logo = JSON.parse(asset.content);
+                  setStepsValidity(prev => ({ ...prev, "ai-name": true }));
+                  break;
+                case 'mission_statement':
                   setFormData(prev => ({
                     ...prev,
                     aiGenerated: {
                       ...prev.aiGenerated,
-                      logo
+                      mission: content
                     }
                   }));
-                  setStepsValidity(prev => ({ ...prev, "ai-logo": true }));
-                } catch (err) {
-                  console.error('Failed to parse logo:', err);
-                }
-                break;
+                  break;
+                case 'vision_statement':
+                  setFormData(prev => ({
+                    ...prev,
+                    aiGenerated: {
+                      ...prev.aiGenerated,
+                      vision: content
+                    }
+                  }));
+                  break;
+                case 'value_proposition':
+                  setFormData(prev => ({
+                    ...prev,
+                    aiGenerated: {
+                      ...prev.aiGenerated,
+                      valueProposition: content
+                    }
+                  }));
+                  break;
+                case 'brand_essence':
+                  setFormData(prev => ({
+                    ...prev,
+                    aiGenerated: {
+                      ...prev.aiGenerated,
+                      brandEssence: content
+                    }
+                  }));
+                  break;
+                case 'brand_voice':
+                  setFormData(prev => ({
+                    ...prev,
+                    aiGenerated: {
+                      ...prev.aiGenerated,
+                      brandVoice: content
+                    }
+                  }));
+                  break;
+                case 'color_palette':
+                  try {
+                    const palette = JSON.parse(content) as GeneratedColorPalette;
+                    setFormData(prev => ({
+                      ...prev,
+                      aiGenerated: {
+                        ...prev.aiGenerated,
+                        colorPalette: palette
+                      }
+                    }));
+                    setStepsValidity(prev => ({ ...prev, "aesthetics": true }));
+                  } catch (err) {
+                    console.error('Failed to parse color palette:', err);
+                    toast.error('Failed to load color palette');
+                  }
+                  break;
+                case 'logo':
+                  try {
+                    const logo = JSON.parse(content) as GeneratedLogo;
+                    setFormData(prev => ({
+                      ...prev,
+                      aiGenerated: {
+                        ...prev.aiGenerated,
+                        logo
+                      }
+                    }));
+                  } catch (err) {
+                    console.error('Failed to parse logo:', err);
+                    toast.error('Failed to load logo');
+                  }
+                  break;
+              }
             }
+          } catch (error) {
+            console.error(`Error loading asset ${type}:`, error);
+            toast.error(`Failed to load ${type}`);
           }
-        }
+        });
 
-        // Determine the starting step based on progress
-        if (project && project.completion_percentage > 0) {
-          // Find the first incomplete step
-          for (const [step, isValid] of Object.entries(stepsValidity)) {
-            if (!isValid) {
-              setCurrentStep(step);
-              break;
-            }
-          }
-        }
-
+        await Promise.all([...stepDataPromises, ...assetPromises]);
+        setIsLoading(false);
       } catch (error) {
         console.error('Error loading project data:', error);
         toast.error('Failed to load project data');
-      } finally {
-        setIsLoading(false);
+        navigate("/dashboard");
       }
     };
 
     loadProjectData();
-  }, [projectId, getProject, getStepData, getAsset]);
+  }, [projectId, getProject, getStepData, getAsset, navigate]);
 
-  // For validation of steps
-  const [stepsValidity, setStepsValidity] = useState({
-    "api-setup": false,
-    basics: false,
-    audience: false,
-    personality: false,
-    "ai-name": false,
-    story: false,
-    "ai-statements": false,
-    competition: false,
-    aesthetics: false,
-    "ai-logo": false,
-  });
-
-  // Define a type for the form data to avoid using 'any'
-  type FormDataUpdate = Partial<typeof formData>;
-
-  const updateFormData = (stepId: string, data: FormDataUpdate) => {
-    setFormData(prev => ({
+  const updateFormData = useCallback((step: string, data: Partial<FormData>) => {
+    setFormData((prev) => ({
       ...prev,
       ...data
     }));
-
-    // Mark the step as valid
     setStepsValidity(prev => ({
       ...prev,
-      [stepId]: true
+      [step]: true
     }));
-  };
+  }, []);
 
-  const handleNext = async () => {
+  const handleNext = useCallback(async () => {
     if (!projectId) return;
 
     setIsSaving(true);
-
     try {
-      // Save step data based on current step
-      let success = false;
-
-      // Prepare data objects outside switch to avoid ESLint warnings
-      const basicsData = {
-        industry: formData.industry,
-        businessName: formData.businessName,
-        productService: formData.productService,
-        uniqueSellingProposition: formData.uniqueSellingProposition,
-      };
-
-      const audienceData = {
-        demographics: formData.demographics,
-        psychographics: formData.psychographics,
-      };
-
-      const personalityData = {
-        personalityTraits: formData.personalityTraits,
-        selectedArchetype: formData.selectedArchetype,
-      };
-
-      const storyData = {
-        mission: formData.mission,
-        vision: formData.vision,
-        values: formData.values,
-        originStory: formData.originStory,
-      };
-
-      const competitionData = {
-        competitors: formData.competitors,
-        differentiators: formData.differentiators,
-      };
-
-      const aestheticsData = {
-        visualStyle: formData.visualStyle,
-        colorPreferences: formData.colorPreferences,
-        inspirationKeywords: formData.inspirationKeywords,
-        moodboardUrls: formData.moodboardUrls,
-      };
-
-      const resultsData = {
-        // Any final data to save
-        completed: true
-      };
-
-      switch (currentStep) {
-        case "api-setup":
-          // No data to save for API setup
-          success = true;
-          break;
-        case "basics":
-          // Save basics data
-          success = await saveStepData('basics', basicsData);
-          break;
-        case "audience":
-          // Save audience data
-          success = await saveStepData('audience', audienceData);
-          break;
-        case "personality":
-          // Save personality data
-          success = await saveStepData('personality', personalityData);
-          break;
-        case "ai-name":
-          // Save brand name
-          if (formData.aiGenerated.brandName) {
-            await saveAsset('brand_name', formData.aiGenerated.brandName);
-          }
-          success = true;
-          break;
-        case "story":
-          // Save story data
-          success = await saveStepData('story', storyData);
-          break;
-        case "ai-statements":
-          // Save AI generated statements
-          if (formData.aiGenerated.mission) {
-            await saveAsset('mission_statement', formData.aiGenerated.mission);
-          }
-          if (formData.aiGenerated.vision) {
-            await saveAsset('vision_statement', formData.aiGenerated.vision);
-          }
-          if (formData.aiGenerated.valueProposition) {
-            await saveAsset('value_proposition', formData.aiGenerated.valueProposition);
-          }
-          if (formData.aiGenerated.brandEssence) {
-            await saveAsset('brand_essence', formData.aiGenerated.brandEssence);
-          }
-          if (formData.aiGenerated.brandVoice) {
-            await saveAsset('brand_voice', formData.aiGenerated.brandVoice);
-          }
-          success = true;
-          break;
-        case "competition":
-          // Save competition data
-          success = await saveStepData('competition', competitionData);
-          break;
-        case "aesthetics":
-          // Save aesthetics data
-          success = await saveStepData('aesthetics', aestheticsData);
-
-          // Save color palette if available
-          if (formData.aiGenerated.colorPalette) {
-            await saveAsset(
-              'color_palette', 
-              JSON.stringify(formData.aiGenerated.colorPalette)
-            );
-          }
-          success = true;
-          break;
-        case "ai-logo":
-          // Save logo if available
-          if (formData.aiGenerated.logo) {
-            await saveAsset(
-              'logo', 
-              JSON.stringify(formData.aiGenerated.logo)
-            );
-          }
-          success = true;
-          break;
-        case "results":
-          // Save results data
-          success = await saveStepData('results', resultsData);
-          break;
-      }
-
-      if (!success) {
-        throw new Error('Failed to save data');
+      // Save current step data
+      if (currentStep !== 'api-setup' && currentStep !== 'results') {
+        // Create a clean step data object without AI generated content
+        const { aiGenerated, ...stepData } = formData;
+        
+        // Convert the data to the correct format for the current step
+        let stepDataToSave: any = stepData;
+        if (currentStep === 'logo') {
+          stepDataToSave = {
+            logo: formData.logo || formData.aiGenerated?.logo
+          };
+        }
+        
+        await saveStepData(currentStep as StepType, stepDataToSave);
       }
 
       // Move to next step
-      switch (currentStep) {
-        case "api-setup":
-          setCurrentStep("basics");
-          break;
-        case "basics":
-          setCurrentStep("audience");
-          break;
-        case "audience":
-          setCurrentStep("personality");
-          break;
-        case "personality":
-          setCurrentStep("ai-name");
-          break;
-        case "ai-name":
-          setCurrentStep("story");
-          break;
-        case "story":
-          setCurrentStep("ai-statements");
-          break;
-        case "ai-statements":
-          setCurrentStep("competition");
-          break;
-        case "competition":
-          setCurrentStep("aesthetics");
-          break;
-        case "aesthetics":
-          setCurrentStep("ai-logo");
-          break;
-        case "ai-logo":
-          setCurrentStep("results");
-          break;
-        case "results":
-          // Navigate to results/brand kit page
-          navigate(`/projects/${projectId}/brand-kit`);
-          break;
+      const currentIndex = STEPS.indexOf(currentStep);
+      if (currentIndex < STEPS.length - 1) {
+        setCurrentStep(STEPS[currentIndex + 1]);
       }
     } catch (error) {
-      console.error('Error saving data:', error);
-      toast.error('Failed to save data');
+      console.error('Error saving step data:', error);
+      toast.error('Failed to save step data');
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [currentStep, formData, projectId, saveStepData]);
 
-  const handlePrevious = () => {
+  const handlePrevious = useCallback(() => {
+    const currentIndex = STEPS.indexOf(currentStep);
+    if (currentIndex > 0) {
+      setCurrentStep(STEPS[currentIndex - 1]);
+    }
+  }, [currentStep]);
+
+  const handleBrandNameSelect = useCallback(async (name: string) => {
+    if (!projectId) return;
+
+    try {
+      await saveAsset('brand_name', name);
+      setFormData(prev => ({
+        ...prev,
+        aiGenerated: {
+          ...prev.aiGenerated,
+          brandName: name
+        }
+      }));
+      setStepsValidity(prev => ({ ...prev, "ai-name": true }));
+      toast.success('Brand name saved successfully');
+    } catch (error) {
+      console.error('Error saving brand name:', error);
+      toast.error('Failed to save brand name');
+    }
+  }, [projectId, saveAsset]);
+
+  const handleMissionSelect = useCallback(async (statement: string) => {
+    if (!projectId) return;
+
+    try {
+      await saveAsset('mission_statement', statement);
+      setFormData(prev => ({
+        ...prev,
+        aiGenerated: {
+          ...prev.aiGenerated,
+          mission: statement
+        }
+      }));
+      toast.success('Mission statement saved successfully');
+    } catch (error) {
+      console.error('Error saving mission statement:', error);
+      toast.error('Failed to save mission statement');
+    }
+  }, [projectId, saveAsset]);
+
+  const handleVisionSelect = useCallback(async (statement: string) => {
+    if (!projectId) return;
+
+    try {
+      await saveAsset('vision_statement', statement);
+      setFormData(prev => ({
+        ...prev,
+        aiGenerated: {
+          ...prev.aiGenerated,
+          vision: statement
+        }
+      }));
+      toast.success('Vision statement saved successfully');
+    } catch (error) {
+      console.error('Error saving vision statement:', error);
+      toast.error('Failed to save vision statement');
+    }
+  }, [projectId, saveAsset]);
+
+  const handleValuePropositionSelect = useCallback(async (statement: string) => {
+    if (!projectId) return;
+
+    try {
+      await saveAsset('value_proposition', statement);
+      setFormData(prev => ({
+        ...prev,
+        aiGenerated: {
+          ...prev.aiGenerated,
+          valueProposition: statement
+        }
+      }));
+      toast.success('Value proposition saved successfully');
+    } catch (error) {
+      console.error('Error saving value proposition:', error);
+      toast.error('Failed to save value proposition');
+    }
+  }, [projectId, saveAsset]);
+
+  const handleBrandEssenceSelect = useCallback(async (statement: string) => {
+    if (!projectId) return;
+
+    try {
+      await saveAsset('brand_essence', statement);
+      setFormData(prev => ({
+        ...prev,
+        aiGenerated: {
+          ...prev.aiGenerated,
+          brandEssence: statement
+        }
+      }));
+      toast.success('Brand essence saved successfully');
+    } catch (error) {
+      console.error('Error saving brand essence:', error);
+      toast.error('Failed to save brand essence');
+    }
+  }, [projectId, saveAsset]);
+
+  const handleBrandVoiceSelect = useCallback(async (statement: string) => {
+    if (!projectId) return;
+
+    try {
+      await saveAsset('brand_voice', statement);
+      setFormData(prev => ({
+        ...prev,
+        aiGenerated: {
+          ...prev.aiGenerated,
+          brandVoice: statement
+        }
+      }));
+      toast.success('Brand voice saved successfully');
+    } catch (error) {
+      console.error('Error saving brand voice:', error);
+      toast.error('Failed to save brand voice');
+    }
+  }, [projectId, saveAsset]);
+
+  const handleColorPaletteSelect = useCallback(async (palette: GeneratedColorPalette) => {
+    if (!projectId) return;
+
+    try {
+      await saveAsset('color_palette', JSON.stringify(palette));
+      setFormData(prev => ({
+        ...prev,
+        aiGenerated: {
+          ...prev.aiGenerated,
+          colorPalette: palette
+        }
+      }));
+      setStepsValidity(prev => ({ ...prev, "aesthetics": true }));
+      toast.success('Color palette saved successfully');
+    } catch (error) {
+      console.error('Error saving color palette:', error);
+      toast.error('Failed to save color palette');
+    }
+  }, [projectId, saveAsset]);
+
+  const handleLogoSelect = useCallback(async (logo: GeneratedLogo) => {
+    if (!projectId) return;
+
+    try {
+      await saveAsset('logo', JSON.stringify(logo));
+      setFormData(prev => ({
+        ...prev,
+        aiGenerated: {
+          ...prev.aiGenerated,
+          logo
+        }
+      }));
+      toast.success('Logo saved successfully');
+    } catch (error) {
+      console.error('Error saving logo:', error);
+      toast.error('Failed to save logo');
+    }
+  }, [projectId, saveAsset]);
+
+  const handleAPISetupComplete = useCallback(() => {
+    setCurrentStep('basics');
+  }, []);
+
+  const canProceed = useCallback(() => {
     switch (currentStep) {
-      case "basics":
-        setCurrentStep("api-setup");
-        break;
-      case "audience":
-        setCurrentStep("basics");
-        break;
-      case "personality":
-        setCurrentStep("audience");
-        break;
-      case "ai-name":
-        setCurrentStep("personality");
-        break;
-      case "story":
-        setCurrentStep("ai-name");
-        break;
-      case "ai-statements":
-        setCurrentStep("story");
-        break;
-      case "competition":
-        setCurrentStep("ai-statements");
-        break;
-      case "aesthetics":
-        setCurrentStep("competition");
-        break;
-      case "ai-logo":
-        setCurrentStep("aesthetics");
-        break;
-      case "results":
-        setCurrentStep("ai-logo");
-        break;
-    }
-  };
-
-  // Handle AI-generated content updates
-  const handleBrandNameSelect = async (name: string) => {
-    setFormData(prev => ({
-      ...prev,
-      businessName: name,
-      aiGenerated: {
-        ...prev.aiGenerated,
-        brandName: name
-      }
-    }));
-
-    // Mark the step as valid
-    setStepsValidity(prev => ({
-      ...prev,
-      "ai-name": true
-    }));
-
-    // Save to backend if we have a project ID
-    if (projectId) {
-      try {
-        await saveAsset('brand_name', name);
-      } catch (error) {
-        console.error('Failed to save brand name:', error);
-        toast.error('Failed to save brand name');
-      }
-    }
-  };
-
-  const handleMissionSelect = async (statement: string) => {
-    setFormData(prev => ({
-      ...prev,
-      mission: statement,
-      aiGenerated: {
-        ...prev.aiGenerated,
-        mission: statement
-      }
-    }));
-
-    // Save to backend if we have a project ID
-    if (projectId) {
-      try {
-        await saveAsset('mission_statement', statement);
-      } catch (error) {
-        console.error('Failed to save mission statement:', error);
-        toast.error('Failed to save mission statement');
-      }
-    }
-  };
-
-  const handleVisionSelect = async (statement: string) => {
-    setFormData(prev => ({
-      ...prev,
-      vision: statement,
-      aiGenerated: {
-        ...prev.aiGenerated,
-        vision: statement
-      }
-    }));
-
-    // Save to backend if we have a project ID
-    if (projectId) {
-      try {
-        await saveAsset('vision_statement', statement);
-      } catch (error) {
-        console.error('Failed to save vision statement:', error);
-        toast.error('Failed to save vision statement');
-      }
-    }
-  };
-
-  const handleValuePropositionSelect = async (statement: string) => {
-    setFormData(prev => ({
-      ...prev,
-      aiGenerated: {
-        ...prev.aiGenerated,
-        valueProposition: statement
-      }
-    }));
-
-    // Save to backend if we have a project ID
-    if (projectId) {
-      try {
-        await saveAsset('value_proposition', statement);
-      } catch (error) {
-        console.error('Failed to save value proposition:', error);
-        toast.error('Failed to save value proposition');
-      }
-    }
-  };
-
-  const handleBrandEssenceSelect = async (statement: string) => {
-    setFormData(prev => ({
-      ...prev,
-      aiGenerated: {
-        ...prev.aiGenerated,
-        brandEssence: statement
-      }
-    }));
-
-    // Save to backend if we have a project ID
-    if (projectId) {
-      try {
-        await saveAsset('brand_essence', statement);
-      } catch (error) {
-        console.error('Failed to save brand essence:', error);
-        toast.error('Failed to save brand essence');
-      }
-    }
-  };
-
-  const handleBrandVoiceSelect = async (statement: string) => {
-    setFormData(prev => ({
-      ...prev,
-      aiGenerated: {
-        ...prev.aiGenerated,
-        brandVoice: statement
-      }
-    }));
-
-    // Mark the step as valid
-    setStepsValidity(prev => ({
-      ...prev,
-      "ai-statements": true
-    }));
-
-    // Save to backend if we have a project ID
-    if (projectId) {
-      try {
-        await saveAsset('brand_voice', statement);
-      } catch (error) {
-        console.error('Failed to save brand voice:', error);
-        toast.error('Failed to save brand voice');
-      }
-    }
-  };
-
-  const handleColorPaletteSelect = async (palette: GeneratedColorPalette) => {
-    setFormData(prev => ({
-      ...prev,
-      aiGenerated: {
-        ...prev.aiGenerated,
-        colorPalette: palette
-      }
-    }));
-
-    // Mark the step as valid
-    setStepsValidity(prev => ({
-      ...prev,
-      "aesthetics": true
-    }));
-
-    // Save to backend if we have a project ID
-    if (projectId) {
-      try {
-        await saveAsset('color_palette', JSON.stringify(palette));
-      } catch (error) {
-        console.error('Failed to save color palette:', error);
-        toast.error('Failed to save color palette');
-      }
-    }
-  };
-
-  const handleLogoSelect = async (logo: GeneratedLogo) => {
-    setFormData(prev => ({
-      ...prev,
-      aiGenerated: {
-        ...prev.aiGenerated,
-        logo
-      }
-    }));
-
-    // Mark the step as valid
-    setStepsValidity(prev => ({
-      ...prev,
-      "ai-logo": true
-    }));
-
-    // Save to backend if we have a project ID
-    if (projectId) {
-      try {
-        await saveAsset('logo', JSON.stringify(logo));
-      } catch (error) {
-        console.error('Failed to save logo:', error);
-        toast.error('Failed to save logo');
-      }
-    }
-  };
-
-  const handleAPISetupComplete = () => {
-    // Mark the API setup step as valid
-    setStepsValidity(prev => ({
-      ...prev,
-      "api-setup": true
-    }));
-  };
-
-  // Show loading indicator while data is being loaded
-  if (isLoading) {
-    return (
-      <WizardLayout
-        currentStep={currentStep}
-        onNext={handleNext}
-        onPrevious={handlePrevious}
-        isNextDisabled={true}
-        isPreviousDisabled={true}
-        isSaving={false}
-      >
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-          <p className="ml-4 text-lg">Loading project data...</p>
-        </div>
-      </WizardLayout>
-    );
-  }
-
-  // Render current step content
-  const renderStepContent = () => {
-    switch (currentStep) {
-      case "api-setup":
-        return (
-          <APIKeySetup onComplete={handleAPISetupComplete} />
-        );
-      case "basics":
-        return (
-          <BusinessBasics 
-            data={formData}
-            onChange={(data) => updateFormData("basics", data)}
-          />
-        );
-      case "audience":
-        return (
-          <TargetAudience 
-            data={formData}
-            onChange={(data) => updateFormData("audience", data)}
-          />
-        );
-      case "personality":
-        return (
-          <BrandPersonality 
-            data={formData}
-            onChange={(data) => updateFormData("personality", data)}
-          />
-        );
-      case "ai-name":
-        return (
-          <BrandNameGenerator
-            industry={formData.industry}
-            businessDescription={formData.productService}
-            keywords={formData.psychographics.interests || []}
-            onSelect={handleBrandNameSelect}
-          />
-        );
-      case "story":
-        return (
-          <BrandStory 
-            data={formData}
-            onChange={(data) => updateFormData("story", data)}
-          />
-        );
-      case "ai-statements":
-        return (
-          <BrandStatementGenerator
-            brandName={formData.businessName || selectedBrandName}
-            industry={formData.industry}
-            targetAudience={`${formData.demographics.ageRange} ${formData.demographics.gender} from ${formData.demographics.location}`}
-            values={formData.values}
-            uniqueSellingPoints={formData.differentiators}
-            onSelectMission={handleMissionSelect}
-            onSelectVision={handleVisionSelect}
-            onSelectValueProposition={handleValuePropositionSelect}
-            onSelectBrandEssence={handleBrandEssenceSelect}
-            onSelectBrandVoice={handleBrandVoiceSelect}
-          />
-        );
-      case "competition":
-        return (
-          <Competition 
-            data={formData}
-            onChange={(data) => updateFormData("competition", data)}
-          />
-        );
-      case "aesthetics":
-        return (
-          <Aesthetics 
-            data={formData}
-            onChange={(data) => updateFormData("aesthetics", data)}
-          />
-        );
-      case "ai-logo":
-        return (
-          <LogoGenerator
-            brandName={formData.businessName || selectedBrandName}
-            industry={formData.industry}
-            brandPersonality={formData.selectedArchetype}
-            onSelect={handleLogoSelect}
-          />
-        );
-      case "results":
-        return (
-          <Results 
-            data={{
-              ...formData,
-              brandName: formData.businessName || selectedBrandName,
-              mission: formData.mission || selectedMissionStatement,
-              vision: formData.vision || selectedVisionStatement,
-              values: formData.values || [], // Explicitly pass values array
-              valueProposition: selectedValueProposition,
-              brandEssence: selectedBrandEssence,
-              brandVoice: selectedBrandVoice,
-              colorPalette: selectedColorPalette,
-              logo: selectedLogo
-            }}
-          />
-        );
+      case 'api-setup':
+        return true;
+      case 'basics':
+        return !!formData.industry && !!formData.businessName && !!formData.productService;
+      case 'brand-name-generator':
+        return !!formData.brandName;
+      case 'audience':
+        return Object.values(formData.demographics).some(v => v) && 
+               Object.values(formData.psychographics).some(v => v.length > 0);
+      case 'personality':
+        return !!formData.selectedArchetype;
+      case 'story':
+        return !!formData.mission && !!formData.vision && formData.values.length > 0;
+      case 'competition':
+        return formData.competitors.length > 0 && formData.differentiators.length > 0;
+      case 'aesthetics':
+        return !!formData.visualStyle && formData.colorPreferences.length > 0;
+      case 'logo':
+        return !!formData.logo;
+      case 'results':
+        return true;
       default:
-        return <div>Step not found</div>;
+        return false;
     }
-  };
+  }, [currentStep, formData]);
 
-  // Determine if we can proceed to the next step
-  const canProceed = () => {
-    // For demo purposes, we'll allow proceeding without validation
-    return true;
+  const renderStepContent = useCallback(() => {
+    if (isLoading) {
+      return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
+    }
 
-    // In a real app, we would check the validity of the current step
-    // return stepsValidity[currentStep as keyof typeof stepsValidity];
-  };
+    switch (currentStep) {
+      case 'api-setup':
+        return <APIKeySetup onComplete={handleAPISetupComplete} />;
+      case 'basics':
+        return (
+          <BusinessBasics
+            data={formData}
+            onChange={(data) => updateFormData('basics', data)}
+          />
+        );
+      case 'brand-name-generator':
+        return (
+          <BrandNameGeneratorStep
+            data={formData}
+            onChange={(data) => updateFormData('brand-name-generator', data)}
+          />
+        );
+      case 'audience':
+        return (
+          <TargetAudience
+            data={formData}
+            onChange={(data) => updateFormData('audience', data)}
+          />
+        );
+      case 'personality':
+        return (
+          <BrandPersonality
+            data={formData}
+            onChange={(data) => updateFormData('personality', data)}
+          />
+        );
+      case 'story':
+        return (
+          <BrandStory
+            data={formData}
+            onChange={(data) => updateFormData('story', data)}
+          />
+        );
+      case 'competition':
+        return (
+          <Competition
+            data={formData}
+            onChange={(data) => updateFormData('competition', data)}
+          />
+        );
+      case 'aesthetics':
+        return (
+          <Aesthetics
+            data={formData}
+            onChange={(data) => updateFormData('aesthetics', data)}
+          />
+        );
+      case 'logo':
+        return (
+          <LogoGeneration
+            data={formData}
+            onChange={(data) => updateFormData('logo', data)}
+          />
+        );
+      case 'results':
+        return <Results data={formData} />;
+      default:
+        return null;
+    }
+  }, [currentStep, formData, isLoading, handleAPISetupComplete, updateFormData]);
 
   return (
     <WizardLayout
@@ -853,7 +713,6 @@ export default function BrandWizard() {
       onNext={handleNext}
       onPrevious={handlePrevious}
       canProceed={canProceed()}
-      isLastStep={currentStep === "results"}
       isSaving={isSaving}
     >
       {renderStepContent()}

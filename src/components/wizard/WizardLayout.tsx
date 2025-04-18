@@ -1,4 +1,3 @@
-
 import { useState, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle, ArrowLeft, ArrowRight, Save } from "lucide-react";
@@ -34,17 +33,16 @@ export const WizardLayout = ({
 
   // These steps would typically come from a context or prop
   const [steps] = useState<WizardStep[]>([
-    { id: "api-setup", title: "API Setup", completed: true },
+    { id: "api-setup", title: "API Setup", completed: false },
     { id: "basics", title: "Business Basics", completed: false },
+    { id: "brand-name-generator", title: "Brand Name Generator", completed: false },
     { id: "audience", title: "Target Audience", completed: false },
     { id: "personality", title: "Brand Personality", completed: false },
-    { id: "ai-name", title: "AI Brand Name", completed: false },
     { id: "story", title: "Brand Story & Values", completed: false },
-    { id: "ai-statements", title: "AI Brand Statements", completed: false },
     { id: "competition", title: "Competitive Landscape", completed: false },
     { id: "aesthetics", title: "Mood & Aesthetics", completed: false },
-    { id: "ai-logo", title: "AI Logo Generation", completed: false },
-    { id: "results", title: "Results & Brand Kit", completed: false },
+    { id: "logo", title: "Logo Generation", completed: false },
+    { id: "results", title: "Results & Brand Kit", completed: false }
   ]);
 
   const currentStepIndex = steps.findIndex((step) => step.id === currentStep);

@@ -49,12 +49,14 @@ export const generateLogoConcepts = async (
           method: 'POST',
           headers: {
             'x-api-key': apiKey,
+            'Accept': 'image/png',
           },
           body: createFormData(prompt),
         });
 
         if (!response.ok) {
-          throw new Error(`ClipDrop API error: ${response.status} ${response.statusText}`);
+          const errorText = await response.text();
+          throw new Error(`ClipDrop API error: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
         // ClipDrop returns the image directly as a blob
@@ -98,11 +100,10 @@ export const generateLogoConcepts = async (
 const createFormData = (prompt: string): FormData => {
   const formData = new FormData();
   formData.append('prompt', prompt);
-
-  // Add additional parameters for better logo generation
-  formData.append('aspect_ratio', '1:1'); // Square aspect ratio for logos
+  formData.append('aspect_ratio', '1:1');
   formData.append('negative_prompt', 'text, watermark, signature, blurry, low quality, distorted');
-
+  formData.append('num_images', '1');
+  formData.append('style', 'logo');
   return formData;
 };
 

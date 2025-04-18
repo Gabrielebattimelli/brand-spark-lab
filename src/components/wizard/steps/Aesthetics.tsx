@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { X, Plus, Upload, ExternalLink, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { useAI } from "@/contexts/AIContext";
-import { generateColorPalettes, ColorPaletteGenerationParams, GeneratedColorPalette } from "@/integrations/ai/colorPalette";
+import { generateColorPalettes, generateDefaultPalettes, ColorPaletteGenerationParams, GeneratedColorPalette } from "@/integrations/ai/colorPalette";
+import { toast } from "@/components/ui/use-toast";
 
 interface AestheticsProps {
   data: any;
@@ -81,6 +81,7 @@ const colorOptions = [
 
 export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
   const { geminiApiKey } = useAI();
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     visualStyle: data.visualStyle || "",
     colorPreferences: data.colorPreferences || [],
@@ -100,20 +101,50 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
 
   // Function to regenerate color palettes
   const regeneratePalettes = async () => {
-    if (!geminiApiKey || !formData.visualStyle) return;
+    if (!formData.visualStyle) {
+      setError("Please select a visual style first");
+      toast({
+        title: "Missing Visual Style",
+        description: "Please select a visual style before generating color palettes.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
       setIsGeneratingPalettes(true);
+      setError(null);
 
       const params: ColorPaletteGenerationParams = {
-        brandName: data.businessName || "Brand",
-        industry: data.industry || "General",
-        brandPersonality: data.brandPersonality || formData.visualStyle,
+        brandName: data.businessName?.trim() || "Brand",
+        industry: data.industry?.trim() || "General",
+        brandPersonality: data.brandPersonality?.trim() || formData.visualStyle,
         aestheticPreferences: [formData.visualStyle, ...(formData.inspirationKeywords || [])],
         colorPreferences: formData.colorPreferences || [],
       };
 
-      const palettes = await generateColorPalettes(geminiApiKey, params, 3);
+      let palettes: GeneratedColorPalette[];
+      try {
+        if (geminiApiKey && geminiApiKey.trim()) {
+          palettes = await generateColorPalettes(geminiApiKey, params, 3);
+        } else {
+          console.warn("No Gemini API key found, using default palettes");
+          palettes = generateDefaultPalettes(3, params);
+        }
+      } catch (apiError) {
+        console.error("Error generating palettes with API:", apiError);
+        toast({
+          title: "API Generation Failed",
+          description: "Using default color palettes instead.",
+          variant: "default",
+        });
+        palettes = generateDefaultPalettes(3, params);
+      }
+
+      if (!palettes || palettes.length === 0) {
+        throw new Error("Failed to generate color palettes");
+      }
+
       setColorPalettes(palettes);
 
       // Update formData with the generated palettes
@@ -123,8 +154,20 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
       };
       setFormData(updatedData);
       onChange(updatedData);
+
+      toast({
+        title: "Color Palettes Generated",
+        description: "Successfully generated new color palettes for your brand.",
+      });
     } catch (error) {
-      console.error("Error generating color palettes:", error);
+      console.error("Error in palette generation:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to generate color palettes";
+      setError(errorMessage);
+      toast({
+        title: "Generation Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
     } finally {
       setIsGeneratingPalettes(false);
     }
@@ -132,39 +175,10 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
 
   // Generate color palettes when visual style or color preferences change
   useEffect(() => {
-    const generatePalettes = async () => {
-      if (!geminiApiKey || !formData.visualStyle) return;
-
-      try {
-        setIsGeneratingPalettes(true);
-
-        const params: ColorPaletteGenerationParams = {
-          brandName: data.businessName || "Brand",
-          industry: data.industry || "General",
-          brandPersonality: data.brandPersonality || formData.visualStyle,
-          aestheticPreferences: [formData.visualStyle, ...(formData.inspirationKeywords || [])],
-          colorPreferences: formData.colorPreferences || [],
-        };
-
-        const palettes = await generateColorPalettes(geminiApiKey, params, 3);
-        setColorPalettes(palettes);
-
-        // Update formData with the generated palettes
-        const updatedData = {
-          ...formData,
-          colorPalettes: palettes,
-        };
-        setFormData(updatedData);
-        onChange(updatedData);
-      } catch (error) {
-        console.error("Error generating color palettes:", error);
-      } finally {
-        setIsGeneratingPalettes(false);
-      }
-    };
-
-    generatePalettes();
-  }, [formData.visualStyle, formData.colorPreferences.length, geminiApiKey]);
+    if (formData.visualStyle) {
+      regeneratePalettes();
+    }
+  }, [formData.visualStyle, formData.colorPreferences.length]);
 
   const handleVisualStyleChange = (value: string) => {
     const updatedData = {
