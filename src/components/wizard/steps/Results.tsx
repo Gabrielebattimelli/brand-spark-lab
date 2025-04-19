@@ -144,37 +144,78 @@ export const Results = ({ data }: ResultsProps) => {
       if (!processedLogo) {
         const selectedLogo = generatedContent.logos.find(logo => logo.id === selectedLogoId);
         if (selectedLogo) {
-          const processed = await processLogo(
-            selectedLogo, 
-            data.aiGenerated?.colorPalette || null
-          );
-          setProcessedLogo(processed);
+          try {
+            const processed = await processLogo(
+              selectedLogo, 
+              data.aiGenerated?.colorPalette || null
+            );
+            setProcessedLogo(processed);
+          } catch (logoError) {
+            console.error('Error processing logo:', logoError);
+            toast({
+              title: "Warning",
+              description: "Could not process logo. Some assets may be missing from the download.",
+              variant: "destructive",
+            });
+          }
         }
       }
 
       // Generate PDF
-      const pdfBlob = await generateBrandGuidelinesPDF(
-        data,
-        generatedContent.logos.find(logo => logo.id === selectedLogoId)
-      );
+      let pdfBlob: Blob | undefined;
+      try {
+        pdfBlob = await generateBrandGuidelinesPDF(
+          data,
+          generatedContent.logos.find(logo => logo.id === selectedLogoId)
+        );
+      } catch (pdfError) {
+        console.error('Error generating PDF:', pdfError);
+        toast({
+          title: "Warning",
+          description: "Could not generate PDF. Some assets may be missing from the download.",
+          variant: "destructive",
+        });
+      }
 
       // Download ZIP with all assets
-      await downloadBrandAssetsZip(
-        data,
-        processedLogo!,
-        pdfBlob,
-        data.moodboardUrls
-      );
+      if (processedLogo) {
+        await downloadBrandAssetsZip(
+          data,
+          processedLogo,
+          pdfBlob,
+          data.moodboardUrls
+        );
 
-      toast({
-        title: "Success",
-        description: "Brand kit downloaded successfully!",
-      });
+        toast({
+          title: "Success",
+          description: "Brand kit downloaded successfully!",
+        });
+      } else {
+        // If we don't have a processed logo, try to download just the PDF
+        if (pdfBlob) {
+          const url = URL.createObjectURL(pdfBlob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${data.brandName || data.businessName || 'brand'}-guidelines.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          
+          toast({
+            title: "Partial Success",
+            description: "Only the brand guidelines PDF was downloaded. Logo processing failed.",
+            variant: "warning",
+          });
+        } else {
+          throw new Error('Failed to process logo and generate PDF');
+        }
+      }
     } catch (error) {
       console.error('Error downloading brand kit:', error);
       toast({
         title: "Error",
-        description: "Failed to download brand kit. Please try again.",
+        description: "Failed to download brand kit. Please try downloading individual items instead.",
         variant: "destructive",
       });
     } finally {
@@ -215,13 +256,46 @@ export const Results = ({ data }: ResultsProps) => {
         data,
         generatedContent.logos.find(logo => logo.id === selectedLogoId)
       );
+      
+      toast({
+        title: "Success",
+        description: "Your browser's print dialog should open. Select 'Save as PDF' to download.",
+      });
     } catch (error) {
       console.error('Error downloading PDF:', error);
-      toast({
-        title: "Error",
-        description: "Failed to download PDF. Please try again.",
-        variant: "destructive",
-      });
+      
+      // Try an alternative approach
+      try {
+        // Generate the HTML and open it in a new window
+        const html = await generateBrandGuidelinesHTML(
+          data,
+          generatedContent.logos.find(logo => logo.id === selectedLogoId)
+        );
+        
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        
+        // Open in a new window
+        window.open(url, '_blank');
+        
+        toast({
+          title: "Alternative Method",
+          description: "PDF generation failed. HTML opened in a new tab. Use your browser's print function to save as PDF.",
+          variant: "warning",
+        });
+        
+        // Clean up the URL object after a minute
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+        }, 60000);
+      } catch (fallbackError) {
+        console.error('Error with fallback HTML method:', fallbackError);
+        toast({
+          title: "Error",
+          description: "Failed to generate PDF or HTML. Please try again later.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsGeneratingPDF(false);
     }
@@ -230,17 +304,44 @@ export const Results = ({ data }: ResultsProps) => {
   const handlePreviewPDF = async () => {
     setIsGeneratingPDF(true);
     try {
-      await previewBrandGuidelinesHTML(
+      const newWindow = await previewBrandGuidelinesHTML(
         data,
         generatedContent.logos.find(logo => logo.id === selectedLogoId)
       );
+      
+      if (!newWindow) {
+        throw new Error('Failed to open preview window. Check your popup blocker settings.');
+      }
     } catch (error) {
       console.error('Error previewing PDF:', error);
-      toast({
-        title: "Error",
-        description: "Failed to preview PDF. Please try again.",
-        variant: "destructive",
-      });
+      
+      // Try an alternative approach
+      try {
+        // Generate the HTML and open it in a new window
+        const html = await generateBrandGuidelinesHTML(
+          data,
+          generatedContent.logos.find(logo => logo.id === selectedLogoId)
+        );
+        
+        // Create a data URL
+        const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+        
+        // Open in a new window
+        window.open(dataUrl, '_blank');
+        
+        toast({
+          title: "Alternative Preview",
+          description: "Using alternative preview method. Some features may be limited.",
+          variant: "warning",
+        });
+      } catch (fallbackError) {
+        console.error('Error with fallback preview method:', fallbackError);
+        toast({
+          title: "Error",
+          description: "Failed to preview. Please check your popup blocker settings and try again.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsGeneratingPDF(false);
     }
@@ -284,25 +385,149 @@ export const Results = ({ data }: ResultsProps) => {
 
     setIsDownloading(true);
     try {
-      // In a real implementation, this would create a zip with all logo formats
-      // For now, we'll just download the original logo
-      downloadProcessedLogo(
-        processedLogo,
-        'original',
-        `${generatedContent.brandName.toLowerCase().replace(/\s+/g, '-')}-logo-package.png`
-      );
+      // Ensure JSZip is loaded
+      await ensureJSZip();
       
-      toast({
-        title: "Success",
-        description: "Logo package downloaded successfully!",
-      });
+      // If JSZip is available, create a zip with all logo formats
+      if ((window as any).JSZip) {
+        const JSZip = (window as any).JSZip;
+        const zip = new JSZip();
+        
+        // Get the brand name for folder naming
+        const brandName = (data.brandName || data.businessName || 'brand').toLowerCase().replace(/\s+/g, '-');
+        
+        // Add all available logo formats
+        if (processedLogo.original.blob) {
+          zip.file(`${brandName}-original.png`, processedLogo.original.blob);
+        }
+        
+        if (processedLogo.black?.blob) {
+          zip.file(`${brandName}-black.png`, processedLogo.black.blob);
+        }
+        
+        if (processedLogo.white?.blob) {
+          zip.file(`${brandName}-white.png`, processedLogo.white.blob);
+        }
+        
+        if (processedLogo.transparent?.blob) {
+          zip.file(`${brandName}-transparent.png`, processedLogo.transparent.blob);
+        }
+        
+        if (processedLogo.negative?.blob) {
+          zip.file(`${brandName}-negative.png`, processedLogo.negative.blob);
+        }
+        
+        if (processedLogo.icon?.blob) {
+          zip.file(`${brandName}-icon.png`, processedLogo.icon.blob);
+        }
+        
+        if (processedLogo.svg?.blob) {
+          zip.file(`${brandName}.svg`, processedLogo.svg.blob);
+        }
+        
+        // Add a README file
+        const readme = `# ${data.brandName || data.businessName} Logo Package
+
+This package contains logo files for ${data.brandName || data.businessName} in various formats.
+
+## Files
+
+- original.png: Full color logo on original background
+- black.png: Black version of the logo
+- white.png: White version of the logo
+- transparent.png: Logo with transparent background
+- negative.png: Inverted colors version
+- icon.png: Square icon version
+- svg: Vector version of the logo
+
+## Usage Guidelines
+
+- Always maintain the proportions of the logo when resizing
+- Do not alter the colors of the logo unless using the provided variations
+- Ensure adequate contrast when placing the logo on backgrounds
+- Maintain clear space around the logo
+
+Generated with BrandSpark
+`;
+        
+        zip.file('README.md', readme);
+        
+        // Generate and download the zip
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(zipBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${brandName}-logo-package.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        toast({
+          title: "Success",
+          description: "Logo package downloaded successfully!",
+        });
+      } else {
+        // If JSZip is not available, download individual files
+        toast({
+          title: "Info",
+          description: "Downloading individual logo files instead of a package.",
+          variant: "warning",
+        });
+        
+        // Download original logo
+        downloadProcessedLogo(
+          processedLogo,
+          'original',
+          `${generatedContent.brandName.toLowerCase().replace(/\s+/g, '-')}-logo-original.png`
+        );
+        
+        // Download black logo if available
+        if (processedLogo.black) {
+          setTimeout(() => {
+            downloadProcessedLogo(
+              processedLogo,
+              'black',
+              `${generatedContent.brandName.toLowerCase().replace(/\s+/g, '-')}-logo-black.png`
+            );
+          }, 500);
+        }
+        
+        // Download transparent logo if available
+        if (processedLogo.transparent) {
+          setTimeout(() => {
+            downloadProcessedLogo(
+              processedLogo,
+              'transparent',
+              `${generatedContent.brandName.toLowerCase().replace(/\s+/g, '-')}-logo-transparent.png`
+            );
+          }, 1000);
+        }
+      }
     } catch (error) {
       console.error('Error downloading logo package:', error);
-      toast({
-        title: "Error",
-        description: "Failed to download logo package. Please try again.",
-        variant: "destructive",
-      });
+      
+      // Fallback to downloading just the original logo
+      try {
+        downloadProcessedLogo(
+          processedLogo,
+          'original',
+          `${generatedContent.brandName.toLowerCase().replace(/\s+/g, '-')}-logo.png`
+        );
+        
+        toast({
+          title: "Partial Success",
+          description: "Only the original logo was downloaded. Try downloading individual formats.",
+          variant: "warning",
+        });
+      } catch (fallbackError) {
+        console.error('Error with fallback download:', fallbackError);
+        toast({
+          title: "Error",
+          description: "Failed to download logo package. Please try again later.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsDownloading(false);
     }

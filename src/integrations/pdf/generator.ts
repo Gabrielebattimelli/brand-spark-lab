@@ -1,4 +1,71 @@
-import { FormData } from '@/pages/projects/BrandWizard';
+// Import the FormData type from the BrandWizard component
+// If there are any TypeScript errors, we'll use a more generic type
+import { FormData as BrandWizardFormData } from '@/pages/projects/BrandWizard';
+
+// Define a fallback type in case the import fails
+type FormData = BrandWizardFormData | {
+  brandName?: string;
+  businessName?: string;
+  industry?: string;
+  productService?: string;
+  uniqueSellingProposition?: string;
+  
+  demographics?: {
+    ageRange?: string;
+    gender?: string;
+    location?: string;
+    income?: string;
+    education?: string;
+    [key: string]: any;
+  };
+  
+  psychographics?: {
+    interests?: string[];
+    values?: string[];
+    painPoints?: string[];
+    goals?: string[];
+    [key: string]: any;
+  };
+  
+  personalityTraits?: Array<{
+    label: string;
+    value: number;
+  }> | any;
+  
+  selectedArchetype?: string;
+  
+  mission?: string;
+  vision?: string;
+  values?: string[] | any;
+  originStory?: string;
+  
+  competitors?: Array<{
+    name: string;
+    strengths?: string;
+    weaknesses?: string;
+  }> | any;
+  
+  differentiators?: string[] | any;
+  
+  visualStyle?: string;
+  colorPreferences?: string[];
+  inspirationKeywords?: string[];
+  moodboardUrls?: string[];
+  logo?: GeneratedLogo | null;
+  
+  aiGenerated?: {
+    brandName?: string;
+    mission?: string;
+    vision?: string;
+    valueProposition?: string;
+    brandEssence?: string;
+    brandVoice?: string;
+    colorPalette?: GeneratedColorPalette | null;
+    logo?: GeneratedLogo | null;
+  };
+  
+  [key: string]: any;
+};
 import { GeneratedColorPalette } from '@/integrations/ai/colorPalette';
 import { GeneratedLogo } from '@/integrations/ai/ideogram';
 
@@ -53,80 +120,256 @@ export const generateBrandGuidelinesHTML = async (
     </div>
   `).join('');
 
-  // Format personality traits
-  const personalityTraitsHTML = personalityTraits?.map(trait => `
-    <div class="personality-trait">
-      <div class="trait-label">${trait.label}</div>
-      <div class="trait-scale">
-        <div class="scale-line">
-          <div class="scale-marker" style="left: ${trait.value}%"></div>
+  // Format personality traits - handle different possible data structures
+  let personalityTraitsHTML = '';
+  
+  if (personalityTraits) {
+    // Check if personalityTraits is an array and has the expected structure
+    if (Array.isArray(personalityTraits) && personalityTraits.length > 0 && typeof personalityTraits[0] === 'object') {
+      personalityTraitsHTML = personalityTraits.map(trait => {
+        // Make sure trait has the expected properties
+        if (trait && trait.label && trait.value !== undefined) {
+          const labelParts = trait.label.includes(' vs. ') ? trait.label.split(' vs. ') : [trait.label, ''];
+          return `
+            <div class="personality-trait">
+              <div class="trait-label">${trait.label}</div>
+              <div class="trait-scale">
+                <div class="scale-line">
+                  <div class="scale-marker" style="left: ${trait.value}%"></div>
+                </div>
+                <div class="scale-labels">
+                  <span>${labelParts[0]}</span>
+                  <span>${labelParts[1]}</span>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+        return '';
+      }).join('');
+    } else if (typeof personalityTraits === 'string') {
+      // If it's a string, just display it as text
+      personalityTraitsHTML = `<p>${personalityTraits}</p>`;
+    } else if (typeof personalityTraits === 'object' && !Array.isArray(personalityTraits)) {
+      // If it's an object but not an array, try to extract values
+      personalityTraitsHTML = Object.entries(personalityTraits)
+        .map(([key, value]) => `<p><strong>${key}:</strong> ${value}</p>`)
+        .join('');
+    }
+  }
+
+  // Format values - handle different possible data structures
+  let valuesHTML = '';
+  
+  if (values) {
+    if (Array.isArray(values)) {
+      valuesHTML = values.map(value => {
+        if (typeof value === 'string') {
+          return `
+            <div class="value-item">
+              <div class="value-name">${value}</div>
+            </div>
+          `;
+        } else if (typeof value === 'object' && value !== null) {
+          // If it's an object, try to extract a name or label property
+          const valueName = value.name || value.label || value.value || JSON.stringify(value);
+          return `
+            <div class="value-item">
+              <div class="value-name">${valueName}</div>
+            </div>
+          `;
+        }
+        return '';
+      }).join('');
+    } else if (typeof values === 'string') {
+      // If it's a string, split by commas or display as is
+      const valueArray = values.includes(',') ? values.split(',').map(v => v.trim()) : [values];
+      valuesHTML = valueArray.map(value => `
+        <div class="value-item">
+          <div class="value-name">${value}</div>
         </div>
-        <div class="scale-labels">
-          <span>${trait.label.split(' vs. ')[0]}</span>
-          <span>${trait.label.split(' vs. ')[1]}</span>
-        </div>
-      </div>
-    </div>
-  `).join('') || '';
+      `).join('');
+    } else if (typeof values === 'object' && !Array.isArray(values)) {
+      // If it's an object but not an array, try to extract values
+      valuesHTML = Object.entries(values)
+        .map(([key, value]) => `
+          <div class="value-item">
+            <div class="value-name">${key}: ${value}</div>
+          </div>
+        `)
+        .join('');
+    }
+  }
 
-  // Format values
-  const valuesHTML = values?.map(value => `
-    <div class="value-item">
-      <div class="value-name">${value}</div>
-    </div>
-  `).join('') || '';
+  // Format differentiators - handle different possible data structures
+  let differentiatorsHTML = '';
+  
+  if (differentiators) {
+    if (Array.isArray(differentiators)) {
+      differentiatorsHTML = differentiators.map(diff => {
+        if (typeof diff === 'string') {
+          return `<li>${diff}</li>`;
+        } else if (typeof diff === 'object' && diff !== null) {
+          // If it's an object, try to extract a name or label property
+          const diffText = diff.name || diff.label || diff.value || JSON.stringify(diff);
+          return `<li>${diffText}</li>`;
+        }
+        return '';
+      }).join('');
+    } else if (typeof differentiators === 'string') {
+      // If it's a string, split by commas or display as is
+      const diffArray = differentiators.includes(',') ? 
+        differentiators.split(',').map(d => d.trim()) : [differentiators];
+      differentiatorsHTML = diffArray.map(diff => `<li>${diff}</li>`).join('');
+    } else if (typeof differentiators === 'object' && !Array.isArray(differentiators)) {
+      // If it's an object but not an array, try to extract values
+      differentiatorsHTML = Object.entries(differentiators)
+        .map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`)
+        .join('');
+    }
+  }
 
-  // Format differentiators
-  const differentiatorsHTML = differentiators?.map(diff => `
-    <li>${diff}</li>
-  `).join('') || '';
-
-  // Format target audience
-  const targetAudienceHTML = `
-    <div class="audience-section">
+  // Format target audience with better error handling
+  let demographicsHTML = '';
+  
+  if (demographics) {
+    demographicsHTML = `
       <h3>Demographics</h3>
       <ul>
-        ${demographics?.ageRange ? `<li><strong>Age Range:</strong> ${demographics.ageRange}</li>` : ''}
-        ${demographics?.gender ? `<li><strong>Gender:</strong> ${demographics.gender}</li>` : ''}
-        ${demographics?.location ? `<li><strong>Location:</strong> ${demographics.location}</li>` : ''}
-        ${demographics?.income ? `<li><strong>Income Level:</strong> ${demographics.income}</li>` : ''}
-        ${demographics?.education ? `<li><strong>Education:</strong> ${demographics.education}</li>` : ''}
+        ${demographics.ageRange ? `<li><strong>Age Range:</strong> ${demographics.ageRange}</li>` : ''}
+        ${demographics.gender ? `<li><strong>Gender:</strong> ${demographics.gender}</li>` : ''}
+        ${demographics.location ? `<li><strong>Location:</strong> ${demographics.location}</li>` : ''}
+        ${demographics.income ? `<li><strong>Income Level:</strong> ${demographics.income}</li>` : ''}
+        ${demographics.education ? `<li><strong>Education:</strong> ${demographics.education}</li>` : ''}
       </ul>
-    </div>
-    <div class="audience-section">
-      <h3>Psychographics</h3>
-      ${psychographics?.interests?.length ? `
+    `;
+    
+    // If demographics is an object but doesn't have the expected properties, try to extract other properties
+    if (!demographics.ageRange && !demographics.gender && !demographics.location && 
+        !demographics.income && !demographics.education && typeof demographics === 'object') {
+      demographicsHTML = `
+        <h3>Demographics</h3>
+        <ul>
+          ${Object.entries(demographics)
+            .filter(([key, value]) => value && typeof value !== 'object')
+            .map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`)
+            .join('')}
+        </ul>
+      `;
+    }
+  }
+  
+  // Helper function to format a list of items
+  const formatList = (items) => {
+    if (!items) return '';
+    
+    if (Array.isArray(items)) {
+      return items.map(item => {
+        if (typeof item === 'string') {
+          return `<li>${item}</li>`;
+        } else if (typeof item === 'object' && item !== null) {
+          const itemText = item.name || item.label || item.value || JSON.stringify(item);
+          return `<li>${itemText}</li>`;
+        }
+        return '';
+      }).join('');
+    } else if (typeof items === 'string') {
+      const itemArray = items.includes(',') ? items.split(',').map(i => i.trim()) : [items];
+      return itemArray.map(item => `<li>${item}</li>`).join('');
+    } else if (typeof items === 'object' && !Array.isArray(items)) {
+      return Object.entries(items)
+        .map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`)
+        .join('');
+    }
+    
+    return '';
+  };
+  
+  // Format psychographics section
+  let psychographicsHTML = '';
+  
+  if (psychographics) {
+    const sections = [];
+    
+    // Handle interests
+    if (psychographics.interests) {
+      sections.push(`
         <div class="psycho-item">
           <h4>Interests</h4>
           <ul>
-            ${psychographics.interests.map(item => `<li>${item}</li>`).join('')}
+            ${formatList(psychographics.interests)}
           </ul>
         </div>
-      ` : ''}
-      ${psychographics?.values?.length ? `
+      `);
+    }
+    
+    // Handle values
+    if (psychographics.values) {
+      sections.push(`
         <div class="psycho-item">
           <h4>Values</h4>
           <ul>
-            ${psychographics.values.map(item => `<li>${item}</li>`).join('')}
+            ${formatList(psychographics.values)}
           </ul>
         </div>
-      ` : ''}
-      ${psychographics?.painPoints?.length ? `
+      `);
+    }
+    
+    // Handle pain points
+    if (psychographics.painPoints) {
+      sections.push(`
         <div class="psycho-item">
           <h4>Pain Points</h4>
           <ul>
-            ${psychographics.painPoints.map(item => `<li>${item}</li>`).join('')}
+            ${formatList(psychographics.painPoints)}
           </ul>
         </div>
-      ` : ''}
-      ${psychographics?.goals?.length ? `
+      `);
+    }
+    
+    // Handle goals
+    if (psychographics.goals) {
+      sections.push(`
         <div class="psycho-item">
           <h4>Goals</h4>
           <ul>
-            ${psychographics.goals.map(item => `<li>${item}</li>`).join('')}
+            ${formatList(psychographics.goals)}
           </ul>
         </div>
-      ` : ''}
+      `);
+    }
+    
+    // If psychographics is an object but doesn't have the expected properties, try to extract other properties
+    if (sections.length === 0 && typeof psychographics === 'object') {
+      Object.entries(psychographics).forEach(([key, value]) => {
+        if (value && key !== 'interests' && key !== 'values' && key !== 'painPoints' && key !== 'goals') {
+          sections.push(`
+            <div class="psycho-item">
+              <h4>${key.charAt(0).toUpperCase() + key.slice(1)}</h4>
+              <ul>
+                ${formatList(value)}
+              </ul>
+            </div>
+          `);
+        }
+      });
+    }
+    
+    psychographicsHTML = sections.join('');
+    
+    // If psychographics is a string, just display it
+    if (typeof psychographics === 'string') {
+      psychographicsHTML = `<p>${psychographics}</p>`;
+    }
+  }
+  
+  const targetAudienceHTML = `
+    <div class="audience-section">
+      ${demographicsHTML || '<h3>Demographics</h3><p>No demographic information provided.</p>'}
+    </div>
+    <div class="audience-section">
+      <h3>Psychographics</h3>
+      ${psychographicsHTML || '<p>No psychographic information provided.</p>'}
     </div>
   `;
 
@@ -434,19 +677,76 @@ export const generateBrandGuidelinesHTML = async (
           <h2>Competitive Analysis</h2>
           
           <h3>Key Competitors</h3>
-          ${competitors?.length ? `
-            <ul>
-              ${competitors.map(comp => `
-                <li>
-                  <strong>${comp.name}</strong>
-                  <ul>
-                    <li>Strengths: ${comp.strengths || 'Not specified'}</li>
-                    <li>Weaknesses: ${comp.weaknesses || 'Not specified'}</li>
-                  </ul>
-                </li>
-              `).join('')}
-            </ul>
-          ` : '<p>No competitors specified</p>'}
+          ${(() => {
+            if (!competitors) return '<p>No competitors specified</p>';
+            
+            if (Array.isArray(competitors)) {
+              if (competitors.length === 0) return '<p>No competitors specified</p>';
+              
+              return `
+                <ul>
+                  ${competitors.map(comp => {
+                    if (typeof comp === 'string') {
+                      return `<li><strong>${comp}</strong></li>`;
+                    } else if (typeof comp === 'object' && comp !== null) {
+                      const name = comp.name || comp.competitor || 'Competitor';
+                      const strengths = comp.strengths || comp.strength || '';
+                      const weaknesses = comp.weaknesses || comp.weakness || '';
+                      
+                      return `
+                        <li>
+                          <strong>${name}</strong>
+                          <ul>
+                            ${strengths ? `<li>Strengths: ${strengths}</li>` : ''}
+                            ${weaknesses ? `<li>Weaknesses: ${weaknesses}</li>` : ''}
+                          </ul>
+                        </li>
+                      `;
+                    }
+                    return '';
+                  }).join('')}
+                </ul>
+              `;
+            } else if (typeof competitors === 'string') {
+              // If it's a string, split by commas or display as is
+              const compArray = competitors.includes(',') ? 
+                competitors.split(',').map(c => c.trim()) : [competitors];
+              
+              return `
+                <ul>
+                  ${compArray.map(comp => `<li><strong>${comp}</strong></li>`).join('')}
+                </ul>
+              `;
+            } else if (typeof competitors === 'object' && !Array.isArray(competitors)) {
+              // If it's an object but not an array, try to extract values
+              return `
+                <ul>
+                  ${Object.entries(competitors)
+                    .map(([key, value]) => {
+                      if (typeof value === 'object' && value !== null) {
+                        const strengths = value.strengths || value.strength || '';
+                        const weaknesses = value.weaknesses || value.weakness || '';
+                        
+                        return `
+                          <li>
+                            <strong>${key}</strong>
+                            <ul>
+                              ${strengths ? `<li>Strengths: ${strengths}</li>` : ''}
+                              ${weaknesses ? `<li>Weaknesses: ${weaknesses}</li>` : ''}
+                            </ul>
+                          </li>
+                        `;
+                      } else {
+                        return `<li><strong>${key}:</strong> ${value}</li>`;
+                      }
+                    })
+                    .join('')}
+                </ul>
+              `;
+            }
+            
+            return '<p>No competitors specified</p>';
+          })()}
           
           <h3>Differentiators</h3>
           ${differentiators?.length ? `<ul>${differentiatorsHTML}</ul>` : '<p>No differentiators specified</p>'}
@@ -517,28 +817,77 @@ export const downloadBrandGuidelinesPDF = async (
   selectedLogo?: GeneratedLogo | null,
   filename: string = 'brand-guidelines.pdf'
 ): Promise<void> => {
-  const html = await generateBrandGuidelinesHTML(data, selectedLogo);
-  
-  // Create a temporary iframe to display the HTML
-  const iframe = document.createElement('iframe');
-  iframe.style.display = 'none';
-  document.body.appendChild(iframe);
-  
-  // Write the HTML content to the iframe
-  const iframeDoc = iframe.contentWindow?.document;
-  if (iframeDoc) {
-    iframeDoc.open();
-    iframeDoc.write(html);
-    iframeDoc.close();
+  try {
+    const html = await generateBrandGuidelinesHTML(data, selectedLogo);
     
-    // Trigger print dialog which allows saving as PDF
-    setTimeout(() => {
-      iframe.contentWindow?.print();
-      // Remove the iframe after printing
+    // Create a blob from the HTML
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    
+    // Open the HTML in a new window
+    const newWindow = window.open(url, '_blank');
+    
+    if (!newWindow) {
+      throw new Error('Failed to open new window. Please check your popup blocker settings.');
+    }
+    
+    // Add print script to the new window
+    newWindow.onload = () => {
+      // Add a small delay to ensure the content is fully loaded
       setTimeout(() => {
-        document.body.removeChild(iframe);
+        newWindow.document.title = filename.replace('.pdf', '');
+        
+        // Add a print button to make it more user-friendly
+        const printButton = newWindow.document.createElement('button');
+        printButton.innerHTML = 'Print / Save as PDF';
+        printButton.style.position = 'fixed';
+        printButton.style.top = '10px';
+        printButton.style.right = '10px';
+        printButton.style.zIndex = '9999';
+        printButton.style.padding = '10px 20px';
+        printButton.style.backgroundColor = '#4F46E5';
+        printButton.style.color = 'white';
+        printButton.style.border = 'none';
+        printButton.style.borderRadius = '5px';
+        printButton.style.cursor = 'pointer';
+        printButton.style.fontFamily = 'Inter, sans-serif';
+        printButton.style.fontWeight = 'bold';
+        
+        printButton.onclick = () => {
+          printButton.style.display = 'none';
+          newWindow.print();
+          setTimeout(() => {
+            printButton.style.display = 'block';
+          }, 1000);
+        };
+        
+        newWindow.document.body.appendChild(printButton);
+        
+        // Add instructions
+        const instructions = newWindow.document.createElement('div');
+        instructions.innerHTML = `
+          <div style="position: fixed; bottom: 10px; right: 10px; background-color: rgba(255, 255, 255, 0.9); 
+                      padding: 10px; border-radius: 5px; border: 1px solid #ccc; max-width: 300px; z-index: 9999;
+                      font-family: Inter, sans-serif; font-size: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <p style="margin: 0 0 10px 0; font-weight: bold;">To save as PDF:</p>
+            <ol style="margin: 0; padding-left: 20px;">
+              <li>Click the "Print / Save as PDF" button</li>
+              <li>Select "Save as PDF" as the destination</li>
+              <li>Click "Save"</li>
+            </ol>
+          </div>
+        `;
+        newWindow.document.body.appendChild(instructions);
       }, 1000);
-    }, 500);
+    };
+    
+    // Clean up the URL object
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 60000); // Clean up after 1 minute
+  } catch (error) {
+    console.error('Error downloading PDF:', error);
+    throw error;
   }
 };
 
@@ -549,14 +898,33 @@ export const previewBrandGuidelinesHTML = async (
   data: FormData,
   selectedLogo?: GeneratedLogo | null
 ): Promise<Window | null> => {
-  const html = await generateBrandGuidelinesHTML(data, selectedLogo);
-  
-  // Open a new window and write the HTML content
-  const newWindow = window.open('', '_blank');
-  if (newWindow) {
-    newWindow.document.write(html);
-    newWindow.document.close();
+  try {
+    const html = await generateBrandGuidelinesHTML(data, selectedLogo);
+    
+    // Create a blob from the HTML
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    
+    // Open the HTML in a new window
+    const newWindow = window.open(url, '_blank');
+    
+    if (!newWindow) {
+      throw new Error('Failed to open new window. Please check your popup blocker settings.');
+    }
+    
+    // Add title to the new window
+    newWindow.onload = () => {
+      newWindow.document.title = `${data.brandName || data.businessName || 'Brand'} Guidelines Preview`;
+    };
+    
+    // Clean up the URL object
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 60000); // Clean up after 1 minute
+    
+    return newWindow;
+  } catch (error) {
+    console.error('Error previewing HTML:', error);
+    throw error;
   }
-  
-  return newWindow;
 };
