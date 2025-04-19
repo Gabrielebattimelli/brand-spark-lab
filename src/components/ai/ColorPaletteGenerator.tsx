@@ -90,10 +90,13 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
             }
             
             // Notify parent component about loaded preferences
-            if (onPreferencesChange) {
+            if (onPreferencesChange && 
+              (loadedAestheticPrefs.length > 0 || loadedColorPrefs.length > 0)) {
               console.log('Notifying parent about loaded preferences:', loadedAestheticPrefs, loadedColorPrefs);
               onPreferencesChange(loadedAestheticPrefs, loadedColorPrefs);
             }
+            else{
+              console.log('No preferences loaded or empty preferences. Not notifying parent.');}
           }
         } catch (err) {
           console.error('Error loading data from database:', err);
@@ -172,7 +175,7 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
       }
 
       setGeneratedColorPalettes(palettes);
-      setInitialGenerationDone(true);
+      
 
       // Save to Supabase
       if (projectId) {
@@ -190,6 +193,9 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
         setSelectedColorPalette(palettes[0]);
         onSelect(palettes[0]);
       }
+      
+      // Set the flag after successfull generation
+      setInitialGenerationDone(true);
 
       // Show success message
       toast({
@@ -410,9 +416,13 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
           </Alert>
         )}
 
-        {generatedColorPalettes.length === 0 ? (
+        
+        <div className="space-y-6">
+            
+        {/* Preferences Section */}
+        {generatedColorPalettes.length === 0 || !initialGenerationDone ? (
           <div className="space-y-6">
-            <div className="space-y-2">
+          <div className="space-y-2">
               <Label htmlFor="aesthetic-preferences">Aesthetic Preferences</Label>
               <div className="flex flex-wrap gap-2 mb-2">
                 {aestheticPreferences.map((preference, index) => (
@@ -482,49 +492,34 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
                 Add specific colors or color descriptions (press Enter after each)
               </p>
             </div>
-
+            </div>) : null}
+            
+            {/* Generate Button */}
             <div className="flex flex-col items-center justify-center py-8">
-              <p className="text-center text-gray-500 mb-4">
-                Click the button below to generate color palettes based on your brand details
-              </p>
-              <Button 
-                onClick={handleGeneratePalettes}
-                disabled={isGeneratingPalettes}
-              >
-                {isGeneratingPalettes ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Generate Color Palettes
-                  </>
-                )}
-              </Button>
+            <p className="text-center text-gray-500 mb-4">
+              Click the button below to generate color palettes based on your brand details
+            </p>
+            <Button 
+              onClick={handleGeneratePalettes}
+              disabled={isGeneratingPalettes}
+            >
+              {isGeneratingPalettes ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Generate
+                </>
+              )}
+            </Button>
             </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
+            {/* Palettes Section */}
+            {generatedColorPalettes.length > 0 && initialGenerationDone ? (
             <div className="grid grid-cols-1 gap-6">
-              {generatedColorPalettes.map((palette) => (
-                <div
-                  key={palette.id}
-                  className={`
-                    relative border rounded-lg overflow-hidden cursor-pointer transition-all p-4
-                    ${palette.selected ? "ring-2 ring-primary" : "hover:border-primary/50"}
-                  `}
-                  onClick={() => handleSelectPalette(palette)}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium">Palette {palette.id.split('-')[1]}</h3>
-                    {palette.selected && (
-                      <div className="bg-primary text-white rounded-full p-1">
-                        <CheckCircle size={16} />
-                      </div>
-                    )}
-                  </div>
+            {generatedColorPalettes.map((palette) => ( <div key={palette.id} className={` relative border rounded-lg overflow-hidden cursor-pointer transition-all p-4 ${palette.selected ? "ring-2 ring-primary" : "hover:border-primary/50"}`} onClick={() => handleSelectPalette(palette)} > <div className="flex items-center justify-between mb-2"> <h3 className="font-medium">Palette {palette.id.split('-')[1]}</h3> {palette.selected && ( <div className="bg-primary text-white rounded-full p-1"> <CheckCircle size={16} /> </div> )} </div>
                   <div className="grid grid-cols-5 gap-2">
                     {palette.colors.map((color, index) => (
                       <div key={index} className="text-center">
@@ -535,45 +530,27 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
                         <p className="text-xs font-medium">{color.name}</p>
                         <p className="text-xs text-gray-600">{color.hex}</p>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
+                    ))} </div> </div>))} </div>
+            ) : null}
+            {/* Feedback Section */}
+            {selectedColorPalette && (
             <div className="space-y-2">
-              <Label htmlFor="feedback">Feedback for Regeneration</Label>
-              <Input
-                id="feedback"
-                placeholder="e.g., make it brighter, more professional, more muted"
-                value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
-              />
-              <p className="text-xs text-gray-500">
-                Provide feedback to guide the regeneration of color palettes
-              </p>
+            <Label htmlFor="feedback">Feedback for Regeneration</Label>
+            <Input id="feedback" placeholder="e.g., make it brighter, more professional, more muted" value={feedback} onChange={(e) => setFeedback(e.target.value)} />
+            <p className="text-xs text-gray-500"> Provide feedback to guide the regeneration of color palettes </p>
             </div>
-
+            )}
+            
+            {/* Apply Feedback Button */}
+            {selectedColorPalette &&(
             <div className="flex justify-center gap-4">
-              <Button
+            <Button
+              
                 variant="outline"
                 onClick={handleGeneratePalettes}
                 disabled={isGeneratingPalettes}
-              >
-                {isGeneratingPalettes ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Generate New Set
-                  </>
-                )}
-              </Button>
-
-              <Button
+              > {isGeneratingPalettes ? ( <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Generating... </> ) : ( <><RefreshCw className="mr-2 h-4 w-4" /> Generate </> )} </Button>
+            <Button
                 onClick={handleRegeneratePalettes}
                 disabled={isGeneratingPalettes || !feedback.trim()}
               >
@@ -588,10 +565,10 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
                     Apply Feedback
                   </>
                 )}
-              </Button>
-            </div>
+              </Button></div>
+            )}
           </div>
-        )}
+          )}
       </CardContent>
       <CardFooter className="flex justify-between">
         {selectedColorPalette && (

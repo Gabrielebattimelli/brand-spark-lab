@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAI } from "@/contexts/AIContext";
 import { useProjects } from "@/hooks/use-projects";
-import { useProjectData, StepType } from "@/hooks/use-project-data";
+import { useProjectData, StepType, FormDataType } from "@/hooks/use-project-data";
 import { useGeneratedAssets, AssetType } from "@/hooks/use-generated-assets";
 import { WizardLayout } from "@/components/wizard/WizardLayout";
 import { BusinessBasics } from "@/components/wizard/steps/BusinessBasics";
 import { TargetAudience } from "@/components/wizard/steps/TargetAudience";
-import { BrandPersonality } from "@/components/wizard/steps/BrandPersonality";
+import { BrandPersonality, PersonalityTrait } from "@/components/wizard/steps/BrandPersonality";
 import { BrandStory } from "@/components/wizard/steps/BrandStory";
 import { Competition } from "@/components/wizard/steps/Competition";
 import { Aesthetics } from "@/components/wizard/steps/Aesthetics";
@@ -21,16 +21,17 @@ import { GeneratedLogo } from "@/integrations/ai/ideogram";
 import { GeneratedColorPalette } from "@/integrations/ai/colorPalette";
 import { toast } from "sonner";
 import { BrandNameGeneratorStep } from "@/components/wizard/steps/BrandNameGeneratorStep";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
 
 // Define the form data type
-export interface FormData {
+export interface FormData extends FormDataType {
   industry: string;
   businessName: string;
-  brandName: string;
   productService: string;
   uniqueSellingProposition: string;
 
-  demographics: {
+  demographics: {  
     ageRange: string;
     gender: string;
     location: string;
@@ -44,15 +45,10 @@ export interface FormData {
     goals: string[];
   };
 
-  personalityTraits: {
-    playfullnessVsSerious: number;
-    modernVsTraditional: number;
-    luxuriousVsAccessible: number;
-    boldVsSubtle: number;
-    formalVsRelaxed: number;
-  };
-  selectedArchetype: string;
+  personalityTraits: PersonalityTrait[];
 
+  selectedArchetype: string;
+  
   mission: string;
   vision: string;
   values: string[];
@@ -69,8 +65,8 @@ export interface FormData {
   colorPreferences: string[];
   inspirationKeywords: string[];
   moodboardUrls: string[];
-
   logo: GeneratedLogo | null;
+  brandName: string;
 
   aiGenerated: {
     brandName: string;
@@ -101,7 +97,6 @@ const STEPS: string[] = [
 const INITIAL_FORM_DATA: FormData = {
   industry: "",
   businessName: "",
-  brandName: "",
   productService: "",
   uniqueSellingProposition: "",
 
@@ -119,13 +114,16 @@ const INITIAL_FORM_DATA: FormData = {
     goals: [],
   },
 
-  personalityTraits: {
-    playfullnessVsSerious: 50,
-    modernVsTraditional: 50,
-    luxuriousVsAccessible: 50,
-    boldVsSubtle: 50,
-    formalVsRelaxed: 50,
-  },
+  personalityTraits: [
+    { label: "Playfulness vs. Seriousness", value: 50 },
+    { label: "Modern vs. Traditional", value: 50 },
+    { label: "Luxurious vs. Accessible", value: 50 },
+    { label: "Bold vs. Subtle", value: 50 },
+    { label: "Formal vs. Relaxed", value: 50 },
+  ],
+  
+  
+
   selectedArchetype: "",
 
   mission: "",
@@ -141,6 +139,7 @@ const INITIAL_FORM_DATA: FormData = {
   inspirationKeywords: [],
   moodboardUrls: [],
 
+  brandName: "",
   logo: null,
 
   aiGenerated: {
@@ -266,15 +265,18 @@ export default function BrandWizard() {
         }
 
         // Load step data in parallel to improve performance
+        
         const stepsToLoad: StepType[] = ['basics', 'audience', 'personality', 'story', 'competition', 'aesthetics', 'results'];
+        let accumulatedStepData: Partial<FormData> = {};
         const stepDataPromises = stepsToLoad.map(async (step) => {
           try {
             const stepData = await getStepData(step);
             if (stepData && typeof stepData === 'object' && Object.keys(stepData).length > 0) {
-              setFormData(prev => ({
-                ...prev,
-                ...(stepData as Partial<FormData>)
-              }));
+              //Accumulate step data
+              accumulatedStepData = {
+                ...accumulatedStepData,
+                ...(stepData as Partial<FormData>),
+              };
               setStepsValidity(prev => ({
                 ...prev,
                 [step]: true
@@ -391,7 +393,7 @@ export default function BrandWizard() {
                     const logo = JSON.parse(content) as GeneratedLogo;
                     console.log(`Successfully loaded logo for project ${projectId}:`, logo.url);
                     
-                    // Store the logo in both the main form data and the AI generated section
+                    // Store the logo in both the main form data
                     setFormData(prev => ({
                       ...prev,
                       logo: logo, // Store in main form data
@@ -420,6 +422,9 @@ export default function BrandWizard() {
         });
 
         await Promise.all([...stepDataPromises, ...assetPromises]);
+        // Apply accumulated step data
+        setFormData(prev => ({ ...prev, ...accumulatedStepData }));
+        
         setIsLoading(false);
       } catch (error) {
         console.error('Error loading project data:', error);
@@ -438,6 +443,7 @@ export default function BrandWizard() {
       ...data
     }));
     
+
     setStepsValidity(prev => ({
       ...prev,
       [step]: true
@@ -473,14 +479,15 @@ export default function BrandWizard() {
         const { aiGenerated, ...stepData } = formData;
         
         // Convert the data to the correct format for the current step
-        let stepDataToSave: any = stepData;
+        let stepDataToSave: any = { ...stepData }; // Spread operator to create a copy
         if (currentStep === 'logo') {
           stepDataToSave = {
             logo: formData.logo || formData.aiGenerated?.logo
           };
         }
-        
+
         await saveStepData(currentStep as StepType, stepDataToSave);
+
       }
 
       // Move to next step
@@ -685,14 +692,12 @@ export default function BrandWizard() {
                Object.values(formData.psychographics).some(v => v.length > 0);
       case 'personality':
         return !!formData.selectedArchetype;
-      case 'story':
+      case 'story': 
         return !!formData.mission && !!formData.vision && formData.values.length > 0;
       case 'competition':
         return formData.competitors.length > 0 && formData.differentiators.length > 0;
       case 'aesthetics':
-        return !!formData.visualStyle && formData.colorPreferences.length > 0;
-      case 'logo':
-        return !!formData.logo;
+        return !!formData.visualStyle ;
       case 'results':
         return true;
       default:
@@ -702,6 +707,14 @@ export default function BrandWizard() {
 
   const renderStepContent = useCallback(() => {
     if (isLoading) {
+
+      return (
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="flex items-center gap-4">
+            <svg className="animate-spin h-10 w-10 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+          </div>
+        </div>
+      );
       return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
     }
 
@@ -780,6 +793,13 @@ export default function BrandWizard() {
       onPrevious={handlePrevious}
       canProceed={canProceed()}
       isSaving={isSaving}
+      header={
+          <Button variant={"ghost"} className="flex gap-2" onClick={handlePrevious} disabled={STEPS.indexOf(currentStep) === 0 || isSaving}>
+            <ArrowLeft className="h-4 w-4" />
+            {STEPS.indexOf(currentStep) === 0 ? 'Start' : 'Back'}
+          </Button>
+
+      }
     >
       {renderStepContent()}
     </WizardLayout>

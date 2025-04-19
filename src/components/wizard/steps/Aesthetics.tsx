@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ColorPaletteGenerator } from "@/components/ai/ColorPaletteGenerator";
 import { useParams } from "react-router-dom";
-import { X, Plus, Upload, ExternalLink, RefreshCw } from "lucide-react";
+import { X, Plus, Upload, ExternalLink, RefreshCw, Image, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { useAI } from "@/contexts/AIContext";
 import { generateColorPalettes, generateDefaultPalettes, ColorPaletteGenerationParams, GeneratedColorPalette } from "@/integrations/ai/colorPalette";
@@ -13,6 +14,7 @@ import { toast } from "@/components/ui/use-toast";
 
 import { FormData } from '@/pages/projects/BrandWizard';
 
+import { generateMoodboardPrompts, generateImages } from "@/integrations/ai/moodboard";
 interface AestheticsProps {
   data: FormData;
   onChange: (data: Partial<FormData>, forceSave?: boolean) => void;
@@ -95,11 +97,8 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
     visualStyle: data.visualStyle || "",
     colorPreferences: data.colorPreferences || [],
     inspirationKeywords: data.inspirationKeywords || [],
-    moodboardUrls: data.moodboardUrls || [],
-    aiGenerated: {
-      ...data.aiGenerated,
-      colorPalette: data.aiGenerated?.colorPalette || null
-    }
+    moodboardUrls: data.moodboardUrls || [],    
+    aiGenerated: data.aiGenerated || {}
   });
   
   // Track whether preferences have been loaded from assets storage
@@ -112,6 +111,10 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
   const [isGeneratingPalettes, setIsGeneratingPalettes] = useState(false);
   const [lastGenerationTime, setLastGenerationTime] = useState<number>(0);
   const [debounceTimeout, setDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
+
+  const [isGeneratingMoodboard, setIsGeneratingMoodboard] = useState(false);
+  const [moodboardImages, setMoodboardImages] = useState<string[]>([]);
+
 
   // Get the selected visual style
   const selectedStyle = visualStyles.find(style => style.id === formData.visualStyle);
@@ -227,6 +230,47 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
     };
   }, [debounceTimeout]);
 
+  // useCallback to avoid re-creation on every render
+  const generateMoodboard = useCallback(async () => {
+    if (!geminiApiKey || geminiApiKey.trim() === "") {
+      setError("Gemini API key is required to generate mood board. Please set your API key in the settings.");
+      toast({
+        title: "API Key Missing",
+        description: "Please set your Gemini API key in the settings to generate the mood board.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsGeneratingMoodboard(true);
+    try {
+      const prompts = await generateMoodboardPrompts(geminiApiKey, {
+        brandName: data.businessName || data.brandName || "Brand",
+        industry: data.industry || "General",
+        visualStyle: formData.visualStyle || "modern",
+        colorPreferences: formData.colorPreferences || [],
+        inspirationKeywords: formData.inspirationKeywords || []
+      });
+
+      if (prompts) {
+        const images = await generateImages(geminiApiKey, prompts);
+        setMoodboardImages(images);
+      } else {
+        throw new Error("Failed to generate mood board prompts.");
+      }
+    } catch (error) {
+      console.error("Error generating mood board:", error);
+      toast({
+        title: "Mood Board Generation Failed",
+        description: "An error occurred while generating the mood board.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingMoodboard(false);
+    }
+  }, [data.businessName, data.brandName, data.industry, formData.visualStyle, formData.colorPreferences, formData.inspirationKeywords, geminiApiKey]);
+
+
+
   // Only generate palettes when the button is clicked
   const handleGeneratePalettes = () => {
     regeneratePalettes();
@@ -317,9 +361,9 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
   return (
     <div className="space-y-8">
       <div className="text-center max-w-3xl mx-auto mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-3">Visual Style & Aesthetics</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-3">Visual Identity</h1>
         <p className="text-gray-600">
-          Define how your brand looks and feels visually. This will guide the design of your logo and visual identity elements.
+          Define the visual identity of your brand. This will guide the design of your logo and visual elements.
         </p>
       </div>
 
@@ -371,21 +415,10 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
           </RadioGroup>
         </div>
 
+        {/* Main Color Palette Section */}
         <div className="mb-10">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Brand Color Palette</h2>
-            {colorPalettes.length > 0 && !isGeneratingPalettes && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={regeneratePalettes}
-                className="flex items-center gap-1"
-              >
-                <RefreshCw size={14} />
-                <span>Regenerate Palettes</span>
-              </Button>
-            )}
-          </div>
+          <h2 className="text-xl font-semibold mb-6">Brand Color Palette</h2>
+          <p className="text-gray-600 mb-6">Generate a color palette for your brand using AI. You can also add specific colors that you like and add some keywords about the style you want.</p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Color Preferences Section */}
@@ -468,27 +501,6 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
                 </div>
               )}
 
-              <div className="mt-6">
-                <CardFooter>
-                  <Button
-                    onClick={handleGeneratePalettes}
-                    disabled={isGeneratingPalettes}
-                    className="w-full"
-                  >
-                    {isGeneratingPalettes ? (
-                      <>
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Generate New Palettes
-                      </>
-                    )}
-                  </Button>
-                </CardFooter>
-              </div>
             </div>
 
             {/* AI-Generated Palettes Section */}
@@ -515,26 +527,32 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
                   onChange(updatedData);
                 }}
                 onPreferencesChange={(aestheticPreferences, colorPrefs) => {
-                  // Update formData with the new preferences
-                  const updatedData = {
-                    ...formData,
-                    // Update wizard's color preferences from the component
-                    colorPreferences: colorPrefs,
-                    // Save aesthetic preferences as inspiration keywords
-                    inspirationKeywords: aestheticPreferences
-                  };
-                  console.log('Preferences changed, updating wizard data:', updatedData);
-                  setFormData(updatedData);
-                  
-                  // Force an immediate save when preferences are loaded from assets
-                  if (!prefLoadedFromAssets) {
-                    console.log('First load from assets, forcing immediate save to project data');
-                    setPrefLoadedFromAssets(true);
-                    // Use forceSave=true to immediately persist to database
-                    onChange(updatedData, true);
-                  } else {
-                    // Normal update during user interaction
+                  // Check if there are actual changes before updating the parent
+                  const hasColorPreferencesChanged = JSON.stringify(colorPrefs) !== JSON.stringify(formData.colorPreferences);
+                  const hasInspirationKeywordsChanged = JSON.stringify(aestheticPreferences) !== JSON.stringify(data.inspirationKeywords);
+                
+                  if (hasColorPreferencesChanged || hasInspirationKeywordsChanged) {
+                    // Update formData with the new preferences
+                    const updatedData = {
+                      ...formData,
+                      // Update wizard's color preferences from the component
+                      colorPreferences: colorPrefs,
+                      // Save aesthetic preferences as inspiration keywords
+                      inspirationKeywords: aestheticPreferences
+                    };
+                    console.log('Preferences changed, updating wizard data:', updatedData);
+                    setFormData(updatedData);
+                    
+                    // Force an immediate save when preferences are loaded from assets
+                    if (!prefLoadedFromAssets) {
+                      console.log('First load from assets, forcing immediate save to project data');
+                      setPrefLoadedFromAssets(true);
+                      // Use forceSave=true to immediately persist to database
+                      onChange(updatedData, true);
+                    } else {
+                      // Normal update during user interaction
                     onChange(updatedData);
+                    }
                   }
                 }}
               />
@@ -661,6 +679,38 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
               </Button>
             </div>
           </div>
+        </div>
+
+        {/* Mood Board Section */}
+        <div className="mb-10">
+          <Separator className="my-8" />
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold">Mood Board</h2>
+            <Button
+                onClick={generateMoodboard}
+                disabled={isGeneratingMoodboard}
+              >
+                {isGeneratingMoodboard ? (
+                  <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Generating...</>
+                ) : (
+                  <><Sparkles className="mr-2 h-4 w-4" /> Generate Mood Board</>
+                )}
+              </Button>
+          </div>
+          <p className="text-gray-600 mb-6">
+            Based on your selections, here's a mood board to visualize the aesthetic direction for your brand.
+          </p>
+          
+          {/* Mood board Images */}
+          {moodboardImages.length > 0 && (
+            <div className="grid grid-cols-2 gap-4">
+              {moodboardImages.map((imageUrl, index) => (
+                <div key={index} className="aspect-square">
+                  <img src={imageUrl} alt={`Moodboard ${index + 1}`} className="w-full h-full object-cover rounded-lg" />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
