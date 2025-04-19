@@ -68,6 +68,177 @@ type FormData = BrandWizardFormData | {
 };
 import { GeneratedColorPalette } from '@/integrations/ai/colorPalette';
 import { GeneratedLogo } from '@/integrations/ai/ideogram';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+/**
+ * Generates complete brand guidelines HTML document using AI
+ */
+export const generateBrandGuidelinesContent = async (
+  data: FormData,
+  apiKey: string
+): Promise<string> => {
+  try {
+    // Initialize the Gemini API with the API key
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    
+    // Extract key data for the prompt
+    const {
+      brandName,
+      businessName,
+      industry,
+      productService,
+      uniqueSellingProposition,
+      demographics,
+      psychographics,
+      personalityTraits,
+      selectedArchetype,
+      mission,
+      vision,
+      values,
+      originStory,
+      competitors,
+      differentiators,
+      visualStyle,
+      colorPreferences,
+      inspirationKeywords,
+      moodboardUrls,
+      aiGenerated,
+    } = data;
+    
+    // Get the color palette
+    const colorPalette = aiGenerated?.colorPalette || null;
+    const colors = colorPalette?.colors || [];
+    
+    // Format color information for the prompt
+    let colorInfo = '';
+    if (colors.length > 0) {
+      colorInfo = 'Color Palette:\n';
+      colors.forEach(color => {
+        colorInfo += `- ${color.name}: ${color.hex} (RGB: ${color.rgb})\n`;
+      });
+    } else if (colorPreferences && colorPreferences.length > 0) {
+      colorInfo = 'Color Preferences:\n';
+      colorPreferences.forEach(color => {
+        colorInfo += `- ${color}\n`;
+      });
+    }
+    
+    // Format values for the prompt
+    let valuesInfo = '';
+    if (values) {
+      if (Array.isArray(values)) {
+        valuesInfo = values.join(', ');
+      } else if (typeof values === 'string') {
+        valuesInfo = values;
+      }
+    }
+    
+    // Format competitors for the prompt
+    let competitorsInfo = '';
+    if (competitors && Array.isArray(competitors)) {
+      competitorsInfo = 'Competitors:\n';
+      competitors.forEach(comp => {
+        if (typeof comp === 'string') {
+          competitorsInfo += `- ${comp}\n`;
+        } else if (typeof comp === 'object' && comp !== null) {
+          const name = comp.name || 'Competitor';
+          const strengths = comp.strengths || '';
+          const weaknesses = comp.weaknesses || '';
+          
+          competitorsInfo += `- ${name}`;
+          if (strengths) competitorsInfo += ` (Strengths: ${strengths})`;
+          if (weaknesses) competitorsInfo += ` (Weaknesses: ${weaknesses})`;
+          competitorsInfo += '\n';
+        }
+      });
+    }
+    
+    // Format moodboard URLs for the prompt
+    let moodboardInfo = '';
+    if (moodboardUrls && moodboardUrls.length > 0) {
+      moodboardInfo = 'MOODBOARD IMAGES (CRITICAL - You MUST include these exact images in the Visual Identity section):\n';
+      moodboardUrls.forEach(url => {
+        moodboardInfo += `- ${url}\n`;
+      });
+      
+      // Add an extra reminder about the importance of including the moodboard
+      moodboardInfo += '\nIMPORTANT: The moodboard images above MUST be displayed in the Visual Identity section using <img> tags with the exact URLs provided.\n';
+    }
+    
+    // Create a comprehensive prompt for the AI
+    const prompt = `
+      Create a complete, visually stunning HTML brand guidelines document for "${brandName || businessName || 'Brand'}".
+      
+      BRAND DETAILS:
+      Brand Name: ${brandName || businessName || 'Not specified'}
+      Industry: ${industry || 'Not specified'}
+      Product/Service: ${productService || 'Not specified'}
+      Unique Selling Proposition: ${uniqueSellingProposition || aiGenerated?.valueProposition || 'Not specified'}
+      Mission: ${mission || aiGenerated?.mission || 'Not specified'}
+      Vision: ${vision || aiGenerated?.vision || 'Not specified'}
+      Values: ${valuesInfo || 'Not specified'}
+      Brand Archetype: ${selectedArchetype || 'Not specified'}
+      Brand Voice: ${aiGenerated?.brandVoice || 'Not specified'}
+      Brand Essence: ${aiGenerated?.brandEssence || 'Not specified'}
+      Origin Story: ${originStory || 'Not specified'}
+      Visual Style: ${visualStyle || 'Not specified'}
+      ${colorInfo}
+      ${competitorsInfo}
+      ${moodboardInfo}
+      
+      DESIGN REQUIREMENTS:
+      1. Create a COMPLETE HTML document with <!DOCTYPE html>, <html>, <head>, and <body> tags
+      2. Include embedded CSS in the <head> section for a professional, modern design
+      3. Use a clean, professional layout with appropriate white space
+      4. Use Google Fonts (like Poppins for headings and Inter for body text)
+      5. Create a color scheme based on the brand's color palette or preferences
+      6. Include responsive design elements that work on different screen sizes
+      7. Add subtle animations or transitions for interactive elements
+      8. Use modern CSS features like flexbox or grid for layout
+      9. Include a table of contents or navigation
+      10. Display all moodboard images in the Visual Identity section using <img> tags with the exact URLs provided
+      
+      CONTENT SECTIONS:
+      1. Cover Page - With brand name, logo placeholder, and a professional header
+      2. Introduction - A brief overview of the brand and its purpose
+      3. Brand Strategy - Including mission, vision, values, and positioning
+      4. Brand Story - The origin story and narrative behind the brand
+      5. Target Audience - Who the brand is trying to reach
+      6. Brand Personality - The character and tone of the brand
+      7. Competitive Analysis - How the brand stands out from competitors
+      8. Visual Identity - Guidelines for visual elements, including:
+         - Color palette with hex codes and RGB values
+         - Typography recommendations
+         - MOODBOARD IMAGES (Display all moodboard images provided in the URLs)
+         - Visual style guidelines
+      9. Brand Voice & Messaging - Communication style and key messages
+      10. Applications - Examples of the brand in use (if applicable)
+      
+      IMPORTANT:
+      - The document should be aesthetically pleasing and professional
+      - Include interactive elements where appropriate (hover effects, etc.)
+      - Make sure the document is complete and can be viewed as a standalone HTML page
+      - Include print-friendly styles
+      - Add a footer with copyright information
+      - The HTML should be valid and well-structured
+      - Include comments in the HTML to explain sections
+      - CRITICAL: If moodboard URLs are provided, you MUST display these images in the Visual Identity section
+      - For moodboard images, use the <img> tag with the src attribute set to the URL provided
+      
+      Your response should be ONLY the complete HTML document with no additional text before or after.
+    `;
+    
+    // Generate content using the AI model
+    const result = await model.generateContent(prompt);
+    const generatedContent = result.response.text();
+    
+    return generatedContent;
+  } catch (error) {
+    console.error("Error generating brand guidelines content:", error);
+    return ""; // Return empty string on error
+  }
+};
 
 /**
  * Generates HTML content for a brand guidelines PDF
@@ -96,6 +267,7 @@ export const generateBrandGuidelinesHTML = async (
     visualStyle,
     colorPreferences,
     inspirationKeywords,
+    moodboardUrls,
     aiGenerated,
   } = data;
 
@@ -373,6 +545,9 @@ export const generateBrandGuidelinesHTML = async (
     </div>
   `;
 
+  // Check if we have AI-generated content
+  const aiGeneratedContent = data.aiGeneratedGuidelinesContent || '';
+  
   // Generate the HTML content
   const html = `
     <!DOCTYPE html>
@@ -617,6 +792,12 @@ export const generateBrandGuidelinesHTML = async (
           <p class="subtitle">Brand Guidelines</p>
         </header>
         
+        ${aiGeneratedContent ? `
+          <!-- AI-Generated Content -->
+          <div class="ai-generated-content">
+            ${aiGeneratedContent}
+          </div>
+        ` : `
         <div class="section">
           <h2>Brand Overview</h2>
           
@@ -643,6 +824,17 @@ export const generateBrandGuidelinesHTML = async (
           <h3>Vision Statement</h3>
           <p>${vision || aiGenerated?.vision || 'Not specified'}</p>
           
+          <h3>Value Proposition</h3>
+          <p>${aiGenerated?.valueProposition || uniqueSellingProposition || 'Not specified'}</p>
+          
+          <h3>Brand Positioning</h3>
+          <p>
+            ${brandName || businessName} positions itself in the ${industry || 'industry'} as 
+            ${uniqueSellingProposition ? `a provider that ${uniqueSellingProposition.toLowerCase()}` : 'a unique provider'}.
+            ${differentiators && differentiators.length > 0 ? 
+              `Our key differentiators include ${Array.isArray(differentiators) ? differentiators.slice(0, 3).join(', ') : differentiators}.` : ''}
+          </p>
+          
           <h3>Brand Essence</h3>
           <p>${aiGenerated?.brandEssence || 'Not specified'}</p>
           
@@ -662,6 +854,7 @@ export const generateBrandGuidelinesHTML = async (
           <h3>Brand Voice</h3>
           <p>${aiGenerated?.brandVoice || 'Not specified'}</p>
         </div>
+        `}
         
         <div class="section">
           <h2>Target Audience</h2>
@@ -771,6 +964,26 @@ export const generateBrandGuidelinesHTML = async (
             <h4>Body: Inter</h4>
             <p style="font-family: 'Inter', sans-serif;">The quick brown fox jumps over the lazy dog.</p>
           </div>
+          
+          ${moodboardUrls && moodboardUrls.length > 0 ? `
+          <h3>Moodboard</h3>
+          <div class="moodboard">
+            ${moodboardUrls.map(url => `
+              <div class="moodboard-image">
+                <img src="${url}" alt="Moodboard image" style="max-width: 100%; height: auto; margin-bottom: 10px; border-radius: 4px;">
+              </div>
+            `).join('')}
+          </div>
+          ` : ''}
+          
+          ${inspirationKeywords && inspirationKeywords.length > 0 ? `
+          <h3>Inspiration Keywords</h3>
+          <div class="inspiration-keywords">
+            <ul>
+              ${inspirationKeywords.map(keyword => `<li>${keyword}</li>`).join('')}
+            </ul>
+          </div>
+          ` : ''}
         </div>
         
         <footer>
@@ -802,9 +1015,31 @@ export const convertHTMLToPDF = async (html: string): Promise<Blob> => {
  */
 export const generateBrandGuidelinesPDF = async (
   data: FormData,
-  selectedLogo?: GeneratedLogo | null
+  selectedLogo?: GeneratedLogo | null,
+  apiKey?: string
 ): Promise<Blob> => {
-  const html = await generateBrandGuidelinesHTML(data, selectedLogo);
+  let html;
+  
+  // If API key is provided, use AI to generate a complete HTML document
+  if (apiKey) {
+    try {
+      // Generate complete HTML document using AI
+      html = await generateBrandGuidelinesContent(data, apiKey);
+      
+      // If AI generation failed, fall back to the template-based approach
+      if (!html) {
+        html = await generateBrandGuidelinesHTML(data, selectedLogo);
+      }
+    } catch (error) {
+      console.error("Error generating AI content for guidelines:", error);
+      // Fall back to the template-based approach
+      html = await generateBrandGuidelinesHTML(data, selectedLogo);
+    }
+  } else {
+    // If no API key, use the template-based approach
+    html = await generateBrandGuidelinesHTML(data, selectedLogo);
+  }
+  
   const pdfBlob = await convertHTMLToPDF(html);
   return pdfBlob;
 };
@@ -815,10 +1050,31 @@ export const generateBrandGuidelinesPDF = async (
 export const downloadBrandGuidelinesPDF = async (
   data: FormData,
   selectedLogo?: GeneratedLogo | null,
-  filename: string = 'brand-guidelines.pdf'
+  filename: string = 'brand-guidelines.pdf',
+  apiKey?: string
 ): Promise<void> => {
   try {
-    const html = await generateBrandGuidelinesHTML(data, selectedLogo);
+    let html;
+    
+    // If API key is provided, use AI to generate a complete HTML document
+    if (apiKey) {
+      try {
+        // Generate complete HTML document using AI
+        html = await generateBrandGuidelinesContent(data, apiKey);
+        
+        // If AI generation failed, fall back to the template-based approach
+        if (!html) {
+          html = await generateBrandGuidelinesHTML(data, selectedLogo);
+        }
+      } catch (error) {
+        console.error("Error generating AI content for guidelines:", error);
+        // Fall back to the template-based approach
+        html = await generateBrandGuidelinesHTML(data, selectedLogo);
+      }
+    } else {
+      // If no API key, use the template-based approach
+      html = await generateBrandGuidelinesHTML(data, selectedLogo);
+    }
     
     // Create a blob from the HTML
     const blob = new Blob([html], { type: 'text/html' });
@@ -896,10 +1152,31 @@ export const downloadBrandGuidelinesPDF = async (
  */
 export const previewBrandGuidelinesHTML = async (
   data: FormData,
-  selectedLogo?: GeneratedLogo | null
+  selectedLogo?: GeneratedLogo | null,
+  apiKey?: string
 ): Promise<Window | null> => {
   try {
-    const html = await generateBrandGuidelinesHTML(data, selectedLogo);
+    let html;
+    
+    // If API key is provided, use AI to generate a complete HTML document
+    if (apiKey) {
+      try {
+        // Generate complete HTML document using AI
+        html = await generateBrandGuidelinesContent(data, apiKey);
+        
+        // If AI generation failed, fall back to the template-based approach
+        if (!html) {
+          html = await generateBrandGuidelinesHTML(data, selectedLogo);
+        }
+      } catch (error) {
+        console.error("Error generating AI content for guidelines:", error);
+        // Fall back to the template-based approach
+        html = await generateBrandGuidelinesHTML(data, selectedLogo);
+      }
+    } else {
+      // If no API key, use the template-based approach
+      html = await generateBrandGuidelinesHTML(data, selectedLogo);
+    }
     
     // Create a blob from the HTML
     const blob = new Blob([html], { type: 'text/html' });

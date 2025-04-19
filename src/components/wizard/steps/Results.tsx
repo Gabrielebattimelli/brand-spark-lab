@@ -30,15 +30,17 @@ import { GeneratedLogo } from "@/integrations/ai/ideogram";
 import { GeneratedColorPalette } from "@/integrations/ai/colorPalette";
 import { FormData } from '@/pages/projects/BrandWizard';
 import { processLogo, ProcessedLogo, downloadProcessedLogo } from "@/integrations/logo/processor";
-import { generateBrandGuidelinesPDF, previewBrandGuidelinesHTML, downloadBrandGuidelinesPDF } from "@/integrations/pdf/generator";
+import { generateBrandGuidelinesPDF, previewBrandGuidelinesHTML, downloadBrandGuidelinesPDF, generateBrandGuidelinesContent, generateBrandGuidelinesHTML } from "@/integrations/pdf/generator";
 import { downloadBrandAssetsZip, ensureJSZip } from "@/integrations/zip/generator";
 import { toast } from "@/components/ui/use-toast";
+import { useAI } from "@/contexts/AIContext";
 
 interface ResultsProps {
   data: FormData;
 }
 
 export const Results = ({ data }: ResultsProps) => {
+  const { geminiApiKey } = useAI();
   const [activeTab, setActiveTab] = useState("brand-strategy");
   const [isDownloading, setIsDownloading] = useState(false);
   const [isCopied, setIsCopied] = useState<string | null>(null);
@@ -254,7 +256,9 @@ export const Results = ({ data }: ResultsProps) => {
     try {
       await downloadBrandGuidelinesPDF(
         data,
-        generatedContent.logos.find(logo => logo.id === selectedLogoId)
+        generatedContent.logos.find(logo => logo.id === selectedLogoId),
+        'brand-guidelines.pdf',
+        geminiApiKey
       );
       
       toast({
@@ -266,28 +270,18 @@ export const Results = ({ data }: ResultsProps) => {
       
       // Try an alternative approach
       try {
-        // Generate the HTML and open it in a new window
-        const html = await generateBrandGuidelinesHTML(
+        // Use the preview function which will use AI if API key is available
+        await previewBrandGuidelinesHTML(
           data,
-          generatedContent.logos.find(logo => logo.id === selectedLogoId)
+          generatedContent.logos.find(logo => logo.id === selectedLogoId),
+          geminiApiKey
         );
-        
-        const blob = new Blob([html], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        
-        // Open in a new window
-        window.open(url, '_blank');
         
         toast({
           title: "Alternative Method",
           description: "PDF generation failed. HTML opened in a new tab. Use your browser's print function to save as PDF.",
           variant: "warning",
         });
-        
-        // Clean up the URL object after a minute
-        setTimeout(() => {
-          URL.revokeObjectURL(url);
-        }, 60000);
       } catch (fallbackError) {
         console.error('Error with fallback HTML method:', fallbackError);
         toast({
@@ -306,7 +300,8 @@ export const Results = ({ data }: ResultsProps) => {
     try {
       const newWindow = await previewBrandGuidelinesHTML(
         data,
-        generatedContent.logos.find(logo => logo.id === selectedLogoId)
+        generatedContent.logos.find(logo => logo.id === selectedLogoId),
+        geminiApiKey
       );
       
       if (!newWindow) {
@@ -315,13 +310,30 @@ export const Results = ({ data }: ResultsProps) => {
     } catch (error) {
       console.error('Error previewing PDF:', error);
       
-      // Try an alternative approach
+      // Try an alternative approach without using the preview function
       try {
-        // Generate the HTML and open it in a new window
-        const html = await generateBrandGuidelinesHTML(
-          data,
-          generatedContent.logos.find(logo => logo.id === selectedLogoId)
-        );
+        // Generate the HTML directly
+        let html;
+        
+        // Try to use AI-generated content if API key is available
+        if (geminiApiKey) {
+          try {
+            html = await generateBrandGuidelinesContent(data, geminiApiKey);
+          } catch (aiError) {
+            console.error('Error generating AI content:', aiError);
+            // Fall back to template-based approach
+            html = await generateBrandGuidelinesHTML(
+              data,
+              generatedContent.logos.find(logo => logo.id === selectedLogoId)
+            );
+          }
+        } else {
+          // No API key, use template-based approach
+          html = await generateBrandGuidelinesHTML(
+            data,
+            generatedContent.logos.find(logo => logo.id === selectedLogoId)
+          );
+        }
         
         // Create a data URL
         const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
@@ -663,9 +675,10 @@ Generated with BrandSpark
         <TabsContent value="visual-identity" className="pt-6">
           <div className="grid gap-6">
             <Tabs defaultValue="logo-options" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="logo-options">Logo Options</TabsTrigger>
                 <TabsTrigger value="color-typography">Colors & Typography</TabsTrigger>
+                <TabsTrigger value="moodboard">Moodboard</TabsTrigger>
               </TabsList>
 
               {/* Logo Options Tab */}
@@ -967,6 +980,39 @@ Generated with BrandSpark
                     </CardContent>
                   </Card>
                 </div>
+              </TabsContent>
+
+              {/* Moodboard Tab */}
+              <TabsContent value="moodboard" className="pt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Moodboard</CardTitle>
+                    <CardDescription>
+                      Visual inspiration for your brand
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {data.moodboardUrls && data.moodboardUrls.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {data.moodboardUrls.map((url, index) => (
+                          <div key={index} className="border rounded-lg overflow-hidden">
+                            <div className="aspect-square relative">
+                              <img 
+                                src={url} 
+                                alt={`Moodboard image ${index + 1}`} 
+                                className="absolute inset-0 w-full h-full object-cover"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        <p>No moodboard images available</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
             </Tabs>
           </div>
