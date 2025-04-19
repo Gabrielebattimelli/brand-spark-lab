@@ -99,85 +99,71 @@ export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId 
               try {
                 const allLogosContent = JSON.parse(allLogosAsset.content);
                 
-                if (allLogosContent && allLogosContent.logos && Array.isArray(allLogosContent.logos) && allLogosContent.logos.length > 0) {
+                if (allLogosContent && allLogosContent.logos && Array.isArray(allLogosContent.logos)) {
                   // Ensure each logo has a unique ID
-                  const uniqueLogos = allLogosContent.logos.filter((logo, index, self) => 
-                    index === self.findIndex(l => l.id === logo.id)
-                  );
+                  const uniqueLogos = allLogosContent.logos.map((logo, index) => ({
+                    ...logo,
+                    id: logo.id || `logo-restored-${index}`
+                  }));
                   
                   // Find the selected logo
                   const selectedLogoId = allLogosContent.selectedLogoId;
-                  selectedLogoFromAssets = uniqueLogos.find(logo => logo.id === selectedLogoId) || uniqueLogos[0];
+                  selectedLogoFromAssets = uniqueLogos.find(logo => logo.id === selectedLogoId);
                   
                   // Store the loaded logos
                   loadedLogos = uniqueLogos;
                   logosLoaded = true;
                   
+                  // Set the logos in state
+                  setGeneratedLogos(uniqueLogos);
+                  
+                  // Set the selected logo if one was found
+                  if (selectedLogoFromAssets) {
+                    setSelectedLogo(selectedLogoFromAssets);
+                  }
+                  
                   // Log success
                   toast({
-                    title: "Logos Loaded",
-                    description: `Successfully loaded ${uniqueLogos.length} logo concepts.`,
+                    title: "Logos Restored",
+                    description: `Successfully restored ${uniqueLogos.length} logo concepts.`,
                     variant: "default",
                   });
                 }
               } catch (parseError) {
-                // Silent error - just continue to next method
+                console.error("Error parsing logos asset:", parseError);
               }
             }
             
-            // If we couldn't load from the 'logos' asset, try to get individual logo assets
+            // If no logos were loaded from the main storage, try fallback methods
             if (!logosLoaded) {
-              // Try to get the single logo asset for backward compatibility
+              // Try legacy single logo storage
               const asset = await getAsset('logo');
               if (asset && asset.content) {
                 try {
                   const logoContent = JSON.parse(asset.content);
-                  
                   if (logoContent && logoContent.url) {
-                    // Add this logo to our collection
                     loadedLogos = [logoContent];
                     selectedLogoFromAssets = logoContent;
                     logosLoaded = true;
+                    setGeneratedLogos(loadedLogos);
+                    setSelectedLogo(selectedLogoFromAssets);
                   }
                 } catch (parseError) {
-                  // Silent error - just continue to next method
+                  console.error("Error parsing legacy logo asset:", parseError);
                 }
               }
-            }
-            
-            // If we still don't have logos, check if there's one in the project data
-            if (!logosLoaded) {
-              const savedLogo = data.logo || (data.aiGenerated && data.aiGenerated.logo);
               
-              if (savedLogo && savedLogo.url) {
-                // Add this logo to our collection
-                loadedLogos = [savedLogo];
-                selectedLogoFromAssets = savedLogo;
+              // Try project data as last resort
+              if (!logosLoaded && data.logo) {
+                loadedLogos = [data.logo];
+                selectedLogoFromAssets = data.logo;
+                setGeneratedLogos(loadedLogos);
+                setSelectedLogo(selectedLogoFromAssets);
                 logosLoaded = true;
               }
             }
-            
-            // If we have loaded logos, update the state
-            if (logosLoaded && loadedLogos.length > 0) {
-              // Initialize the generated logos with all saved logos
-              setGeneratedLogos(loadedLogos);
-              
-              // Set the selected logo
-              if (selectedLogoFromAssets) {
-                setSelectedLogo(selectedLogoFromAssets);
-                
-                // Update project data with the selected logo
-                onChange({
-                  logo: selectedLogoFromAssets,
-                  aiGenerated: {
-                    ...data.aiGenerated,
-                    logo: selectedLogoFromAssets
-                  }
-                });
-              }
-            }
           } catch (assetError) {
-            // Silent error - just continue
+            console.error("Error loading logos from assets:", assetError);
             toast({
               title: "Warning",
               description: "Could not load all previously generated logos.",
@@ -188,7 +174,7 @@ export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId 
         
         setInitialized(true);
       } catch (error) {
-        // Silent error - just mark as initialized
+        console.error("Logo initialization error:", error);
         setInitialized(true);
         toast({
           title: "Error",
@@ -504,13 +490,11 @@ export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId 
             </div>
           )}
         </CardContent>
-        <CardFooter className="flex justify-between">
+        <CardFooter className="flex items-center gap-2">
           {selectedLogo && (
-            <div className="flex items-center gap-2">
-              <p className="text-xs text-gray-500">
-                Selected logo: {selectedLogo.id}
-              </p>
-            </div>
+            <p className="text-xs text-gray-500">
+              Selected logo: {selectedLogo.id}
+            </p>
           )}
         </CardFooter>
       </Card>
