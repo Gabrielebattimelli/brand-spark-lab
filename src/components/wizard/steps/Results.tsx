@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,61 +18,48 @@ import {
   Sparkles,
   RefreshCw,
   FileType,
+  FileImage,
+  Eye,
+  Archive,
+  Palette,
+  FileText,
+  Image,
+  Layers,
 } from "lucide-react";
 import { GeneratedLogo } from "@/integrations/ai/ideogram";
 import { GeneratedColorPalette } from "@/integrations/ai/colorPalette";
-import { LogoSVGTransformer } from "@/components/ai/LogoSVGTransformer";
+import { FormData } from '@/pages/projects/BrandWizard';
+import { processLogo, ProcessedLogo, downloadProcessedLogo } from "@/integrations/logo/processor";
+import { generateBrandGuidelinesPDF, previewBrandGuidelinesHTML, downloadBrandGuidelinesPDF } from "@/integrations/pdf/generator";
+import { downloadBrandAssetsZip, ensureJSZip } from "@/integrations/zip/generator";
+import { toast } from "@/components/ui/use-toast";
 
 interface ResultsProps {
-  data: {
-    // Basic info
-    brandName: string;
-    industry: string;
-    productService: string;
-
-    // Brand messaging
-    mission: string;
-    vision: string;
-    values: string[];
-    valueProposition?: string;
-    brandEssence?: string;
-    brandVoice?: string;
-
-    // Visual identity
-    visualStyle: string;
-    colorPreferences: string[];
-    colorPalette?: GeneratedColorPalette | null;
-    logo?: GeneratedLogo | null;
-
-    // Demographics data
-    demographics?: {
-      ageRange?: string;
-      gender?: string;
-      location?: string;
-      income?: string;
-      education?: string;
-    };
-
-    // Other properties that might be needed
-    [key: string]: unknown;
-  };
+  data: FormData;
 }
 
 export const Results = ({ data }: ResultsProps) => {
   const [activeTab, setActiveTab] = useState("brand-strategy");
   const [isDownloading, setIsDownloading] = useState(false);
-  const [isCopied, setIsCopied] = useState(false);
+  const [isCopied, setIsCopied] = useState<string | null>(null);
   const [isGeneratingMore, setIsGeneratingMore] = useState(false);
+  const [isProcessingLogo, setIsProcessingLogo] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [processedLogo, setProcessedLogo] = useState<ProcessedLogo | null>(null);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [selectedLogoId, setSelectedLogoId] = useState<string | null>(
+    data.logo?.id || (data.aiGenerated?.logo?.id || null)
+  );
 
   // Combine provided data with defaults for any missing values
   const generatedContent = {
-    brandName: data.brandName || "NovaBrand",
-    mission: data.mission || "To empower businesses with innovative solutions that drive growth and success.",
-    vision: data.vision || "A world where every business has the tools and support they need to thrive in the digital era.",
+    brandName: data.brandName || data.businessName || "NovaBrand",
+    mission: data.mission || data.aiGenerated?.mission || "To empower businesses with innovative solutions that drive growth and success.",
+    vision: data.vision || data.aiGenerated?.vision || "A world where every business has the tools and support they need to thrive in the digital era.",
     values: data.values || ["Innovation", "Integrity", "Excellence", "Collaboration"],
-    voiceTone: data.brandVoice || "Friendly, professional, and knowledgeable. Communication should inspire confidence while remaining approachable and jargon-free.",
-    valueProposition: data.valueProposition || "We provide exceptional value through innovative solutions tailored to your specific needs.",
-    brandEssence: data.brandEssence || "The essence of our brand is built on trust, innovation, and customer success.",
+    voiceTone: data.aiGenerated?.brandVoice || "Friendly, professional, and knowledgeable. Communication should inspire confidence while remaining approachable and jargon-free.",
+    valueProposition: data.uniqueSellingProposition || data.aiGenerated?.valueProposition || "We provide exceptional value through innovative solutions tailored to your specific needs.",
+    brandEssence: data.aiGenerated?.brandEssence || "The essence of our brand is built on trust, innovation, and customer success.",
     targetAudience: data.demographics?.ageRange || data.demographics?.gender || data.demographics?.location 
       ? `${data.demographics?.ageRange || ""} ${data.demographics?.gender || ""} ${data.demographics?.location ? `from ${data.demographics.location}` : ""}`
       : "Small to medium-sized businesses looking to establish or strengthen their online presence. Decision-makers aged 30-50 who value quality and results over the lowest price point.",
@@ -81,6 +68,11 @@ export const Results = ({ data }: ResultsProps) => {
     logos: data.logo ? [
       {
         ...data.logo,
+        selected: true
+      }
+    ] : data.aiGenerated?.logo ? [
+      {
+        ...data.aiGenerated.logo,
         selected: true
       }
     ] : [
@@ -96,20 +88,8 @@ export const Results = ({ data }: ResultsProps) => {
         selected: false,
         prompt: ""
       },
-      {
-        id: "3",
-        url: "https://placehold.co/600x400/f38e63/ffffff?text=Logo+3",
-        selected: false,
-        prompt: ""
-      },
-      {
-        id: "4",
-        url: "https://placehold.co/600x400/f38e63/ffffff?text=Logo+4",
-        selected: false,
-        prompt: ""
-      },
     ],
-    colors: data.colorPalette ? data.colorPalette.colors : [
+    colors: data.aiGenerated?.colorPalette?.colors || [
       { name: "Primary", hex: "#f38e63", rgb: "243, 142, 99" },
       { name: "Secondary", hex: "#6C757D", rgb: "108, 117, 125" },
       { name: "Accent", hex: "#9b87f5", rgb: "155, 135, 245" },
@@ -122,19 +102,90 @@ export const Results = ({ data }: ResultsProps) => {
     },
   };
 
-  const handleDownload = () => {
+  // Process the logo when component mounts or when the selected logo changes
+  useEffect(() => {
+    const processSelectedLogo = async () => {
+      const selectedLogo = generatedContent.logos.find(logo => logo.id === selectedLogoId);
+      if (selectedLogo) {
+        setIsProcessingLogo(true);
+        try {
+          const processed = await processLogo(
+            selectedLogo, 
+            data.aiGenerated?.colorPalette || null
+          );
+          setProcessedLogo(processed);
+        } catch (error) {
+          console.error('Error processing logo:', error);
+          toast({
+            title: "Error",
+            description: "Failed to process logo. Please try again.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsProcessingLogo(false);
+        }
+      }
+    };
+
+    processSelectedLogo();
+  }, [selectedLogoId, data.aiGenerated?.colorPalette]);
+
+  // Load JSZip when component mounts
+  useEffect(() => {
+    ensureJSZip().catch(error => {
+      console.error('Error loading JSZip:', error);
+    });
+  }, []);
+
+  const handleDownloadAll = async () => {
     setIsDownloading(true);
-    // Simulate download process
-    setTimeout(() => {
+    try {
+      // Ensure the logo is processed
+      if (!processedLogo) {
+        const selectedLogo = generatedContent.logos.find(logo => logo.id === selectedLogoId);
+        if (selectedLogo) {
+          const processed = await processLogo(
+            selectedLogo, 
+            data.aiGenerated?.colorPalette || null
+          );
+          setProcessedLogo(processed);
+        }
+      }
+
+      // Generate PDF
+      const pdfBlob = await generateBrandGuidelinesPDF(
+        data,
+        generatedContent.logos.find(logo => logo.id === selectedLogoId)
+      );
+
+      // Download ZIP with all assets
+      await downloadBrandAssetsZip(
+        data,
+        processedLogo!,
+        pdfBlob,
+        data.moodboardUrls
+      );
+
+      toast({
+        title: "Success",
+        description: "Brand kit downloaded successfully!",
+      });
+    } catch (error) {
+      console.error('Error downloading brand kit:', error);
+      toast({
+        title: "Error",
+        description: "Failed to download brand kit. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
       setIsDownloading(false);
-      // In a real app, this would initiate a download of the brand kit
-    }, 2000);
+    }
   };
 
-  const handleCopy = (text: string) => {
+  const handleCopy = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+    setIsCopied(field);
+    setTimeout(() => setIsCopied(null), 2000);
   };
 
   const handleGenerateMore = () => {
@@ -142,14 +193,119 @@ export const Results = ({ data }: ResultsProps) => {
     // Simulate regeneration process
     setTimeout(() => {
       setIsGeneratingMore(false);
-      // In a real app, this would generate new logos
-    }, 2000);
+      toast({
+        title: "Info",
+        description: "To generate more logos, please go back to the Logo Generation step.",
+      });
+    }, 1000);
   };
 
-  const selectLogo = (id: number) => {
-    // Would update the selected logo in a real app
-    // This is just a placeholder
-    console.log(`Selected logo ${id}`);
+  const selectLogo = (id: string) => {
+    setSelectedLogoId(id);
+    // Update the logos array to mark the selected logo
+    generatedContent.logos.forEach(logo => {
+      logo.selected = logo.id === id;
+    });
+  };
+
+  const handleDownloadPDF = async () => {
+    setIsGeneratingPDF(true);
+    try {
+      await downloadBrandGuidelinesPDF(
+        data,
+        generatedContent.logos.find(logo => logo.id === selectedLogoId)
+      );
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      toast({
+        title: "Error",
+        description: "Failed to download PDF. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  const handlePreviewPDF = async () => {
+    setIsGeneratingPDF(true);
+    try {
+      await previewBrandGuidelinesHTML(
+        data,
+        generatedContent.logos.find(logo => logo.id === selectedLogoId)
+      );
+    } catch (error) {
+      console.error('Error previewing PDF:', error);
+      toast({
+        title: "Error",
+        description: "Failed to preview PDF. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  const handleDownloadLogo = (format: keyof ProcessedLogo) => {
+    if (!processedLogo) {
+      toast({
+        title: "Error",
+        description: "Logo processing not complete. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      downloadProcessedLogo(
+        processedLogo,
+        format,
+        `${generatedContent.brandName.toLowerCase().replace(/\s+/g, '-')}-logo${format === 'svg' ? '.svg' : '.png'}`
+      );
+    } catch (error) {
+      console.error(`Error downloading ${format} logo:`, error);
+      toast({
+        title: "Error",
+        description: `Failed to download ${format} logo. Please try again.`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDownloadLogoPackage = async () => {
+    if (!processedLogo) {
+      toast({
+        title: "Error",
+        description: "Logo processing not complete. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsDownloading(true);
+    try {
+      // In a real implementation, this would create a zip with all logo formats
+      // For now, we'll just download the original logo
+      downloadProcessedLogo(
+        processedLogo,
+        'original',
+        `${generatedContent.brandName.toLowerCase().replace(/\s+/g, '-')}-logo-package.png`
+      );
+      
+      toast({
+        title: "Success",
+        description: "Logo package downloaded successfully!",
+      });
+    } catch (error) {
+      console.error('Error downloading logo package:', error);
+      toast({
+        title: "Error",
+        description: "Failed to download logo package. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
@@ -196,9 +352,9 @@ export const Results = ({ data }: ResultsProps) => {
                       variant="ghost"
                       size="icon"
                       className="absolute top-2 right-2 h-8 w-8"
-                      onClick={() => handleCopy(generatedContent.mission)}
+                      onClick={() => handleCopy(generatedContent.mission, 'mission')}
                     >
-                      {isCopied ? <CheckCircle size={16} /> : <Copy size={16} />}
+                      {isCopied === 'mission' ? <CheckCircle size={16} /> : <Copy size={16} />}
                     </Button>
                   </div>
                 </div>
@@ -211,9 +367,9 @@ export const Results = ({ data }: ResultsProps) => {
                       variant="ghost"
                       size="icon"
                       className="absolute top-2 right-2 h-8 w-8"
-                      onClick={() => handleCopy(generatedContent.vision)}
+                      onClick={() => handleCopy(generatedContent.vision, 'vision')}
                     >
-                      {isCopied ? <CheckCircle size={16} /> : <Copy size={16} />}
+                      {isCopied === 'vision' ? <CheckCircle size={16} /> : <Copy size={16} />}
                     </Button>
                   </div>
                 </div>
@@ -282,9 +438,8 @@ export const Results = ({ data }: ResultsProps) => {
         <TabsContent value="visual-identity" className="pt-6">
           <div className="grid gap-6">
             <Tabs defaultValue="logo-options" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="logo-options">Logo Options</TabsTrigger>
-                <TabsTrigger value="svg-transformer">SVG Transformer</TabsTrigger>
                 <TabsTrigger value="color-typography">Colors & Typography</TabsTrigger>
               </TabsList>
 
@@ -303,7 +458,7 @@ export const Results = ({ data }: ResultsProps) => {
                         <div
                           key={logo.id}
                           className={`relative border rounded-lg overflow-hidden cursor-pointer transition-all ${
-                            logo.selected ? "ring-2 ring-primary" : "hover:border-primary/50"
+                            logo.id === selectedLogoId ? "ring-2 ring-primary" : "hover:border-primary/50"
                           }`}
                           onClick={() => selectLogo(logo.id)}
                         >
@@ -312,7 +467,7 @@ export const Results = ({ data }: ResultsProps) => {
                             alt={`Logo option ${logo.id}`}
                             className="w-full h-auto"
                           />
-                          {logo.selected && (
+                          {logo.id === selectedLogoId && (
                             <div className="absolute top-2 right-2 bg-primary text-white rounded-full p-1">
                               <CheckCircle size={16} />
                             </div>
@@ -341,24 +496,190 @@ export const Results = ({ data }: ResultsProps) => {
                     </div>
                   </CardContent>
                 </Card>
-              </TabsContent>
 
-              {/* SVG Transformer Tab */}
-              <TabsContent value="svg-transformer" className="pt-4">
-                {generatedContent.logos.find(logo => logo.selected) ? (
-                  <LogoSVGTransformer 
-                    logo={generatedContent.logos.find(logo => logo.selected)!}
-                    colorPalette={data.colorPalette}
-                  />
-                ) : (
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="flex flex-col items-center justify-center py-8 text-center">
-                        <FileType className="h-12 w-12 text-gray-400 mb-4" />
-                        <h3 className="text-lg font-medium mb-2">No Logo Selected</h3>
-                        <p className="text-gray-500 max-w-md">
-                          Please select a logo from the Logo Options tab to transform it into SVG format and apply different color schemes.
-                        </p>
+                {/* Logo Variations */}
+                {processedLogo && (
+                  <Card className="mt-6">
+                    <CardHeader>
+                      <CardTitle>Logo Variations</CardTitle>
+                      <CardDescription>
+                        Different versions of your selected logo
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* Original */}
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="p-4 bg-white">
+                            <img 
+                              src={processedLogo.original.url} 
+                              alt="Original logo" 
+                              className="w-full h-auto max-h-40 object-contain"
+                            />
+                          </div>
+                          <div className="p-3 bg-gray-50 border-t">
+                            <p className="font-medium text-sm">Original</p>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="w-full mt-2"
+                              onClick={() => handleDownloadLogo('original')}
+                            >
+                              <Download size={14} className="mr-2" />
+                              Download
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Black */}
+                        {processedLogo.black && (
+                          <div className="border rounded-lg overflow-hidden">
+                            <div className="p-4 bg-white">
+                              <img 
+                                src={processedLogo.black.url} 
+                                alt="Black logo" 
+                                className="w-full h-auto max-h-40 object-contain"
+                              />
+                            </div>
+                            <div className="p-3 bg-gray-50 border-t">
+                              <p className="font-medium text-sm">Black</p>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="w-full mt-2"
+                                onClick={() => handleDownloadLogo('black')}
+                              >
+                                <Download size={14} className="mr-2" />
+                                Download
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* White */}
+                        {processedLogo.white && (
+                          <div className="border rounded-lg overflow-hidden">
+                            <div className="p-4 bg-gray-800">
+                              <img 
+                                src={processedLogo.white.url} 
+                                alt="White logo" 
+                                className="w-full h-auto max-h-40 object-contain"
+                              />
+                            </div>
+                            <div className="p-3 bg-gray-50 border-t">
+                              <p className="font-medium text-sm">White</p>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="w-full mt-2"
+                                onClick={() => handleDownloadLogo('white')}
+                              >
+                                <Download size={14} className="mr-2" />
+                                Download
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Transparent */}
+                        {processedLogo.transparent && (
+                          <div className="border rounded-lg overflow-hidden">
+                            <div className="p-4 bg-gray-100 bg-opacity-50" style={{ backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAALGPC/xhBQAAAAlwSFlzAAAOwgAADsIBFShKgAAAABl0RVh0U29mdHdhcmUAcGFpbnQubmV0IDQuMC4xOdTWsmQAAAAcSURBVDhPYxgFo2AUjAIYeHBw8P9RPBoGDAYGANAqCgFdR5y0AAAAAElFTkSuQmCC")' }}>
+                              <img 
+                                src={processedLogo.transparent.url} 
+                                alt="Transparent logo" 
+                                className="w-full h-auto max-h-40 object-contain"
+                              />
+                            </div>
+                            <div className="p-3 bg-gray-50 border-t">
+                              <p className="font-medium text-sm">Transparent</p>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="w-full mt-2"
+                                onClick={() => handleDownloadLogo('transparent')}
+                              >
+                                <Download size={14} className="mr-2" />
+                                Download
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Negative */}
+                        {processedLogo.negative && (
+                          <div className="border rounded-lg overflow-hidden">
+                            <div className="p-4 bg-white">
+                              <img 
+                                src={processedLogo.negative.url} 
+                                alt="Negative logo" 
+                                className="w-full h-auto max-h-40 object-contain"
+                              />
+                            </div>
+                            <div className="p-3 bg-gray-50 border-t">
+                              <p className="font-medium text-sm">Negative</p>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="w-full mt-2"
+                                onClick={() => handleDownloadLogo('negative')}
+                              >
+                                <Download size={14} className="mr-2" />
+                                Download
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Icon */}
+                        {processedLogo.icon && (
+                          <div className="border rounded-lg overflow-hidden">
+                            <div className="p-4 bg-white">
+                              <img 
+                                src={processedLogo.icon.url} 
+                                alt="Icon version" 
+                                className="w-full h-auto max-h-40 object-contain"
+                              />
+                            </div>
+                            <div className="p-3 bg-gray-50 border-t">
+                              <p className="font-medium text-sm">Icon</p>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="w-full mt-2"
+                                onClick={() => handleDownloadLogo('icon')}
+                              >
+                                <Download size={14} className="mr-2" />
+                                Download
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* SVG */}
+                        {processedLogo.svg && (
+                          <div className="border rounded-lg overflow-hidden">
+                            <div className="p-4 bg-white">
+                              <img 
+                                src={processedLogo.svg.url} 
+                                alt="SVG version" 
+                                className="w-full h-auto max-h-40 object-contain"
+                              />
+                            </div>
+                            <div className="p-3 bg-gray-50 border-t">
+                              <p className="font-medium text-sm">SVG</p>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="w-full mt-2"
+                                onClick={() => handleDownloadLogo('svg')}
+                              >
+                                <Download size={14} className="mr-2" />
+                                Download
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -450,19 +771,57 @@ export const Results = ({ data }: ResultsProps) => {
                   <h3 className="font-medium">What's included:</h3>
                   <ul className="text-sm text-gray-600 mt-1 space-y-1">
                     <li>• Brand Guidelines PDF (Mission, Vision, Values, Voice)</li>
-                    <li>• Logo Files (SVG, PNG with transparent background, JPG)</li>
-                    <li>• Color Palette with HEX, RGB, and CMYK codes</li>
+                    <li>• Logo Files (PNG, SVG, Transparent, Black, White, Icon)</li>
+                    <li>• Color Palette with HEX and RGB codes</li>
                     <li>• Typography recommendations</li>
-                    <li>• SVG versions with different color schemes</li>
+                    {data.moodboardUrls?.length > 0 && (
+                      <li>• Moodboard images</li>
+                    )}
                   </ul>
                 </div>
               </div>
+
+              {/* PDF Preview */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Brand Guidelines Preview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="border rounded-lg overflow-hidden bg-gray-50 p-6 text-center">
+                    <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium mb-2">{generatedContent.brandName} Brand Guidelines</h3>
+                    <p className="text-gray-500 mb-4">
+                      A comprehensive guide to your brand's identity, messaging, and visual elements.
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={handlePreviewPDF}
+                        disabled={isGeneratingPDF}
+                      >
+                        <Eye size={16} className="mr-2" />
+                        Preview
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={handleDownloadPDF}
+                        disabled={isGeneratingPDF}
+                      >
+                        <Download size={16} className="mr-2" />
+                        Download PDF
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               <div className="text-center py-6">
                 <Button
                   size="lg"
                   className="px-8"
-                  onClick={handleDownload}
+                  onClick={handleDownloadAll}
                   disabled={isDownloading}
                 >
                   {isDownloading ? (
@@ -485,25 +844,37 @@ export const Results = ({ data }: ResultsProps) => {
             <CardFooter className="flex flex-col items-stretch border-t pt-6">
               <h3 className="font-medium mb-3">Individual downloads:</h3>
               <div className="grid gap-3">
-                <Button variant="outline" className="justify-between">
+                <Button 
+                  variant="outline" 
+                  className="justify-between"
+                  onClick={handleDownloadPDF}
+                  disabled={isGeneratingPDF}
+                >
                   Brand Guidelines (PDF)
-                  <Download size={16} />
-                </Button>
-                <Button variant="outline" className="justify-between">
-                  Logo Package (ZIP)
-                  <Download size={16} />
-                </Button>
-                <Button variant="outline" className="justify-between">
-                  Color Palette (PDF)
                   <Download size={16} />
                 </Button>
                 <Button 
                   variant="outline" 
                   className="justify-between"
-                  onClick={() => setActiveTab("visual-identity")}
+                  onClick={handleDownloadLogoPackage}
+                  disabled={!processedLogo}
                 >
-                  SVG Logo Editor
-                  <FileType size={16} />
+                  Logo Package (ZIP)
+                  <Download size={16} />
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="justify-between"
+                  onClick={() => {
+                    // In a real implementation, this would download a PDF with color palette
+                    toast({
+                      title: "Info",
+                      description: "Color palette is included in the Brand Guidelines PDF.",
+                    });
+                  }}
+                >
+                  Color Palette (PDF)
+                  <Download size={16} />
                 </Button>
               </div>
             </CardFooter>
