@@ -2,6 +2,21 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
+// Logging utility to prevent excessive console logs
+// Set to false to disable verbose logging
+const ENABLE_VERBOSE_LOGGING = false;
+
+const log = {
+  debug: (message: string) => {
+    if (ENABLE_VERBOSE_LOGGING) {
+      console.log(message);
+    }
+  },
+  error: (message: string) => {
+    console.error(message);
+  }
+};
+
 export interface Project {
   id: string;
   name: string;
@@ -31,9 +46,9 @@ export const useProjects = () => {
   const { user } = useAuth();
 
   const getProjects = useCallback(async (): Promise<Project[]> => {
-    console.log("getProjects - starting");
+    log.debug("getProjects - starting");
     if (!user) {
-      console.log("getProjects - no user, returning empty array");
+      log.debug("getProjects - no user, returning empty array");
       setError("Authentication required. Please log in.");
       return [];
     }
@@ -46,7 +61,7 @@ export const useProjects = () => {
 
     while (retryCount < maxRetries) {
       try {
-        console.log(`getProjects - attempt ${retryCount + 1} of ${maxRetries}`);
+        log.debug(`getProjects - attempt ${retryCount + 1} of ${maxRetries}`);
         const { data, error } = await supabase
           .from('projects')
           .select('*')
@@ -54,7 +69,7 @@ export const useProjects = () => {
           .order('updated_at', { ascending: false });
 
         if (error) {
-          console.error("getProjects - error:", error);
+          log.error("getProjects - error:" + error.message);
 
           // Check for specific error types
           if (error.code === 'PGRST301') {
@@ -71,7 +86,7 @@ export const useProjects = () => {
           }
         }
 
-        console.log("getProjects - success, projects:", data);
+        log.debug("getProjects - success, projects found: " + (data?.length || 0));
         // Transform Supabase project data to our Project type
         return (data as SupabaseProject[]).map(project => ({
           ...project,
@@ -108,7 +123,7 @@ export const useProjects = () => {
 
     while (retryCount < maxRetries) {
       try {
-        console.log(`getProject - attempt ${retryCount + 1} of ${maxRetries}`);
+        log.debug(`getProject - attempt ${retryCount + 1} of ${maxRetries}`);
         const { data, error } = await supabase
           .from('projects')
           .select('*')
@@ -175,9 +190,9 @@ export const useProjects = () => {
     industry: string;
     description?: string;
   }): Promise<Project | null> => {
-    console.log("createProject - starting with project:", project);
+    log.debug("createProject - starting with project name: " + project.name);
     if (!user) {
-      console.log("createProject - no user, returning null");
+      log.debug("createProject - no user, returning null");
       setError("Authentication required. Please log in.");
       return null;
     }
@@ -190,7 +205,7 @@ export const useProjects = () => {
 
     while (retryCount < maxRetries) {
       try {
-        console.log(`createProject - attempt ${retryCount + 1} of ${maxRetries}`);
+        log.debug(`createProject - attempt ${retryCount + 1} of ${maxRetries}`);
         const { data, error } = await supabase
           .from('projects')
           .insert({

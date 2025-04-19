@@ -90,13 +90,11 @@ const colorOptions = [
 
 export const Aesthetics = ({ data, onChange, saveAsset, projectId }: AestheticsProps) => {
   try {
-  console.log('Aesthetics component props:', { data, onChange: !!onChange, saveAsset: !!saveAsset, projectId });
+  // Removed excessive logging
   
   const { projectId: routeProjectId } = useParams<{ projectId: string }>();
   // Use the projectId from props if available, otherwise use the one from the route
   const effectiveProjectId = projectId || routeProjectId;
-  
-  console.log('Effective Project ID:', effectiveProjectId);
   
   if (!effectiveProjectId) {
     console.error('Project ID is required in Aesthetics component');
@@ -248,11 +246,7 @@ export const Aesthetics = ({ data, onChange, saveAsset, projectId }: AestheticsP
   // Use the saveAsset from props if available, otherwise use the one from the hook
   const effectiveSaveAsset = saveAsset || hookSaveAsset;
   
-  console.log('Save Asset Functions:', { 
-    propSaveAsset: typeof saveAsset === 'function', 
-    hookSaveAsset: typeof hookSaveAsset === 'function',
-    effectiveSaveAsset: typeof effectiveSaveAsset === 'function'
-  });
+  // Removed excessive logging
   
   // Load mood board function - simplified to just use the data from props
   const loadMoodboard = useCallback(async () => {

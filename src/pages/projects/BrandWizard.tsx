@@ -202,6 +202,51 @@ export default function BrandWizard() {
   const [isLoading, setIsLoading] = useState(true);
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA);
   const [stepsValidity, setStepsValidity] = useState<Record<string, boolean>>({});
+  // Track if step data has changed to avoid unnecessary saves
+  const [stepDataCache, setStepDataCache] = useState<Record<string, any>>({});
+  
+  // Debug log for step data cache
+  useEffect(() => {
+    console.log('Step data cache updated:', Object.keys(stepDataCache));
+  }, [stepDataCache]);
+  
+  // Helper function to normalize data for comparison
+  const normalizeDataForComparison = useCallback((data: any): any => {
+    // Handle null/undefined
+    if (data === null || data === undefined) {
+      return null;
+    }
+    
+    // Handle arrays
+    if (Array.isArray(data)) {
+      return data.map(normalizeDataForComparison);
+    }
+    
+    // Handle objects
+    if (typeof data === 'object') {
+      // Filter out empty values and sort keys
+      const result: Record<string, any> = {};
+      const keys = Object.keys(data).sort();
+      
+      for (const key of keys) {
+        const value = data[key];
+        
+        // Skip null, undefined, empty strings, empty arrays, empty objects
+        if (value === null || value === undefined) continue;
+        if (value === '') continue;
+        if (Array.isArray(value) && value.length === 0) continue;
+        if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) continue;
+        
+        // Recursively normalize the value
+        result[key] = normalizeDataForComparison(value);
+      }
+      
+      return result;
+    }
+    
+    // Return primitives as is
+    return data;
+  }, []);
 
   // Initialize hooks
   const { getProject } = useProjects();
@@ -266,17 +311,37 @@ export default function BrandWizard() {
 
         // Load step data in parallel to improve performance
         
-        const stepsToLoad: StepType[] = ['basics', 'audience', 'personality', 'story', 'competition', 'aesthetics', 'results'];
+        const stepsToLoad: StepType[] = ['basics', 'audience', 'personality', 'story', 'competition', 'aesthetics', 'logo', 'results'];
         let accumulatedStepData: Partial<FormData> = {};
         const stepDataPromises = stepsToLoad.map(async (step) => {
           try {
             const stepData = await getStepData(step);
             if (stepData && typeof stepData === 'object' && Object.keys(stepData).length > 0) {
               //Accumulate step data
-              accumulatedStepData = {
-                ...accumulatedStepData,
-                ...(stepData as Partial<FormData>),
-              };
+              if (step === 'logo') {
+                // Special handling for logo step
+                accumulatedStepData = {
+                  ...accumulatedStepData,
+                  logo: stepData.logo
+                };
+              } else {
+                accumulatedStepData = {
+                  ...accumulatedStepData,
+                  ...(stepData as Partial<FormData>),
+                };
+              }
+              
+              // Initialize step data cache to avoid unnecessary saves
+              setStepDataCache(prev => {
+                console.log(`Initializing cache for step: ${step}`);
+                // Normalize the data for consistent comparison
+                const normalizedData = normalizeDataForComparison(stepData);
+                return {
+                  ...prev,
+                  [step]: normalizedData
+                };
+              });
+              
               setStepsValidity(prev => ({
                 ...prev,
                 [step]: true
@@ -428,15 +493,11 @@ export default function BrandWizard() {
                         setStepsValidity(prev => ({ ...prev, "logo": true }));
                       }
                       
-                      // Show success toast
-                      toast({
-                        title: "Logos Loaded",
-                        description: `Successfully loaded ${uniqueLogos.length} logo concepts.`,
-                      });
+                      // Don't show success toast for logos loading - it's too noisy
                     }
                   } catch (err) {
-                    // Silent error with toast
-                    toast.error('Failed to load logos');
+                    // Don't show error toast for logos loading - it's too intrusive
+                    console.error('Failed to load logos:', err);
                   }
                   break;
                   
@@ -477,8 +538,8 @@ export default function BrandWizard() {
                       setGeneratedLogos([logo]);
                     }
                   } catch (err) {
-                    // Silent error with toast
-                    toast.error('Failed to load logo');
+                    // Don't show error toast for logo loading - it's too intrusive
+                    console.error('Failed to load logo:', err);
                   }
                   break;
                 case 'moodboard':
@@ -527,16 +588,12 @@ export default function BrandWizard() {
     };
 
     loadProjectData();
-  }, [projectId, getProject, getStepData, getAsset, navigate]);
+  }, [projectId, getProject, getStepData, getAsset, navigate, setStepDataCache, normalizeDataForComparison]);
 
   const updateFormData = useCallback(async (step: string, data: Partial<FormData>, forceSave: boolean = false) => {
-    // Log the update for debugging
+    // Check for logo updates
     if (step === 'logo') {
       const hasLogo = !!(data.logo || (data.aiGenerated && data.aiGenerated.logo));
-      console.log(`updateFormData for logo step:`, {
-        hasLogo: hasLogo,
-        logoId: data.logo?.id || data.aiGenerated?.logo?.id
-      });
       
       // Explicitly set the logo step as valid if a logo is selected
       if (hasLogo) {
@@ -560,62 +617,153 @@ export default function BrandWizard() {
     
     // Optionally immediately save to database (for aesthetic preferences that need to persist)
     if (forceSave && projectId) {
-      console.log('Force saving step data for', step);
+      // First get current form data with the new data applied
+      const currentFormData = { ...formData, ...data };
+      const { aiGenerated, ...stepData } = currentFormData;
+      
+      // Normalize data for comparison
+      const normalizedCurrentData = normalizeDataForComparison(stepData);
+      const cachedData = stepDataCache[step];
+      const normalizedCachedData = cachedData ? normalizeDataForComparison(cachedData) : null;
+      
+      // Stringify for comparison
+      const currentDataStr = JSON.stringify(normalizedCurrentData);
+      const cachedDataStr = normalizedCachedData ? JSON.stringify(normalizedCachedData) : null;
+      
+      // Check if data has changed
+      const hasChanged = !cachedData || currentDataStr !== cachedDataStr;
+      
+      console.log(`updateFormData - Step: ${step}, Has cached data: ${!!cachedData}, Has changed: ${hasChanged}`);
+      
+      // Skip saving if no changes
+      if (!hasChanged) {
+        console.log('No changes detected in updateFormData, skipping save');
+        return;
+      }
+      
+      // If we have changes, save them
+      console.log('Changes detected in updateFormData, saving data');
       setIsSaving(true);
+      
       try {
-        // First get current form data
-        const currentFormData = { ...formData, ...data };
-        const { aiGenerated, ...stepData } = currentFormData;
-        await saveStepData(step as StepType, stepData);
-        console.log('Successfully force saved step data for', step);
+        // Save data
+        const saveResult = await saveStepData(step as StepType, stepData);
+        
+        if (saveResult) {
+          // Update cache with normalized data
+          const normalizedData = normalizeDataForComparison(stepData);
+          setStepDataCache(prev => ({
+            ...prev,
+            [step]: normalizedData
+          }));
+        } else {
+          console.error('Save operation returned false');
+          toast.error('Failed to save changes');
+        }
       } catch (error) {
-        console.error('Error force saving step data:', error);
-        toast.error('Failed to save preference changes');
+        console.error('Error saving step data:', error);
+        toast.error('Failed to save changes');
       } finally {
         setIsSaving(false);
       }
     }
-  }, [projectId, saveStepData, formData]);
+  }, [projectId, saveStepData, formData, setStepDataCache, normalizeDataForComparison]);
 
+
+
+  // Completely rewritten handleNext function with a simpler approach
   const handleNext = useCallback(async () => {
     if (!projectId) return;
-
-    setIsSaving(true);
-    try {
-      // Save current step data
-      if (currentStep !== 'results') {
-        // Create a clean step data object without AI generated content
-        const { aiGenerated, ...stepData } = formData;
-        
-        // Convert the data to the correct format for the current step
-        let stepDataToSave: any = { ...stepData }; // Spread operator to create a copy
-        if (currentStep === 'logo') {
-          const logoToSave = formData.logo || formData.aiGenerated?.logo;
-          console.log(`handleNext for logo step: saving logo`, {
-            hasLogo: !!logoToSave,
-            logoId: logoToSave?.id
-          });
-          stepDataToSave = {
-            logo: logoToSave
-          };
-        }
-
-        await saveStepData(currentStep as StepType, stepDataToSave);
-
-      }
-
-      // Move to next step
+    
+    // Move to next step immediately without saving if no changes
+    const moveToNextStep = () => {
       const currentIndex = STEPS.indexOf(currentStep);
       if (currentIndex < STEPS.length - 1) {
         setCurrentStep(STEPS[currentIndex + 1]);
       }
+    };
+    
+    // Skip saving for results step
+    if (currentStep === 'results') {
+      moveToNextStep();
+      return;
+    }
+    
+    // Prepare data to save
+    const { aiGenerated, ...stepData } = formData;
+    let dataToSave = { ...stepData };
+    
+    // Special handling for logo step
+    if (currentStep === 'logo') {
+      const logoToSave = formData.logo || formData.aiGenerated?.logo;
+      dataToSave = { logo: logoToSave };
+    }
+    
+    // Normalize data for comparison
+    const normalizedCurrentData = normalizeDataForComparison(dataToSave);
+    const cachedData = stepDataCache[currentStep];
+    const normalizedCachedData = cachedData ? normalizeDataForComparison(cachedData) : null;
+    
+    // Stringify for comparison
+    const currentDataStr = JSON.stringify(normalizedCurrentData);
+    const cachedDataStr = normalizedCachedData ? JSON.stringify(normalizedCachedData) : null;
+    
+    // Check if data has changed
+    const hasChanged = !cachedData || currentDataStr !== cachedDataStr;
+    
+    console.log(`Step: ${currentStep}, Has cached data: ${!!cachedData}, Has changed: ${hasChanged}`);
+    console.log(`Current data (${currentDataStr.length} chars): ${currentDataStr}`);
+    if (cachedData) {
+      console.log(`Cached data (${cachedDataStr.length} chars): ${cachedDataStr}`);
+      
+      // If they're different but similar length, find where they differ
+      if (hasChanged && cachedDataStr && Math.abs(currentDataStr.length - cachedDataStr.length) < 50) {
+        for (let i = 0; i < Math.min(currentDataStr.length, cachedDataStr.length); i++) {
+          if (currentDataStr[i] !== cachedDataStr[i]) {
+            console.log(`First difference at position ${i}: '${currentDataStr.substring(i, i+20)}' vs '${cachedDataStr.substring(i, i+20)}'`);
+            break;
+          }
+        }
+      }
+    }
+    
+    // If no changes, just move to next step without saving
+    if (!hasChanged) {
+      console.log('No changes detected, skipping save');
+      moveToNextStep();
+      return;
+    }
+    
+    // If we have changes, save them
+    console.log('Changes detected, saving data');
+    setIsSaving(true);
+    
+    try {
+      // Save data
+      const saveResult = await saveStepData(currentStep as StepType, dataToSave);
+      
+      if (saveResult) {
+        // Update cache with normalized data
+        const normalizedData = normalizeDataForComparison(dataToSave);
+        setStepDataCache(prev => ({
+          ...prev,
+          [currentStep]: normalizedData
+        }));
+        
+        // Move to next step
+        moveToNextStep();
+      } else {
+        // If save failed, don't move to next step
+        console.error('Save operation returned false');
+        toast.error('Failed to save changes');
+      }
     } catch (error) {
       console.error('Error saving step data:', error);
-      toast.error('Failed to save step data');
+      toast.error('Failed to save changes');
     } finally {
       setIsSaving(false);
     }
-  }, [currentStep, formData, projectId, saveStepData]);
+  }, [currentStep, formData, projectId, saveStepData, stepDataCache, normalizeDataForComparison]);
 
   const handlePrevious = useCallback(() => {
     const currentIndex = STEPS.indexOf(currentStep);

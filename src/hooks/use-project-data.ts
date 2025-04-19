@@ -189,7 +189,8 @@ export const useProjectData = (projectId?: string) => {
       // Update project status and completion percentage
       await updateProjectProgress(projectId);
 
-      toast.success('Step data saved successfully');
+      // Don't show success toast - it's too noisy
+      // toast.success('Step data saved successfully');
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save step data';

@@ -5,6 +5,21 @@ import { Json } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 import { GeneratedLogo } from '@/types/logo';
 
+// Logging utility to prevent excessive console logs
+// Set to true only during development/debugging
+const ENABLE_VERBOSE_LOGGING = false;
+
+const log = {
+  debug: (message: string) => {
+    if (ENABLE_VERBOSE_LOGGING) {
+      console.log(message);
+    }
+  },
+  error: (message: string) => {
+    console.error(message);
+  }
+};
+
 export type AssetType = 'logo' | 'logos' | 'color_palette' | 'color_palette_suggestions' | 'color_palette_preferences' | 'brand_name' | 'brand_name_suggestions' | 'mission_statement' | 'vision_statement' | 'value_proposition' | 'brand_essence' | 'brand_voice' | 'moodboard';
 
 export interface GeneratedAsset {
@@ -137,7 +152,7 @@ export const useGeneratedAssets = (projectId?: string) => {
 
   const getAssets = useCallback(async (type?: AssetType): Promise<GeneratedAsset[]> => {
     if (!user || !projectId) {
-      console.error('Authentication required for getAssets');
+      log.error('Authentication required for getAssets');
       return [];
     }
 
@@ -145,7 +160,7 @@ export const useGeneratedAssets = (projectId?: string) => {
     setError(null);
 
     try {
-      console.log(`getAssets: Fetching assets${type ? ` of type ${type}` : ''} for project ${projectId} and user ${user.id}`);
+      log.debug(`getAssets: Fetching assets${type ? ` of type ${type}` : ''} for project ${projectId}`);
       
       // First, verify the project belongs to the user
       const { data: project, error: projectError } = await supabase
@@ -156,11 +171,11 @@ export const useGeneratedAssets = (projectId?: string) => {
         .single();
 
       if (projectError || !project) {
-        console.error(`Project verification failed: ${projectError?.message || 'Project not found'}`);
+        log.error(`Project verification failed: ${projectError?.message || 'Project not found'}`);
         return [];
       }
 
-      console.log(`getAssets: Project ${projectId} verified for user ${user.id}`);
+      log.debug(`getAssets: Project verified`);
 
       let assets: any[] = [];
 
@@ -179,13 +194,13 @@ export const useGeneratedAssets = (projectId?: string) => {
         .order('created_at', { ascending: false });
 
       if (queryError) {
-        console.error(`Error fetching assets: ${queryError.message}`);
+        log.error(`Error fetching assets: ${queryError.message}`);
         return [];
       }
 
       assets = queryAssets || [];
 
-      console.log(`getAssets: Found ${assets.length} assets`);
+      log.debug(`getAssets: Found ${assets.length} assets`);
 
       // Validate and type the assets
       const validAssets = assets
@@ -199,7 +214,7 @@ export const useGeneratedAssets = (projectId?: string) => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch assets';
       setError(message);
-      console.error(`getAssets error: ${message}`);
+      log.error(`getAssets error: ${message}`);
       return [];
     } finally {
       setLoading(false);
@@ -208,7 +223,7 @@ export const useGeneratedAssets = (projectId?: string) => {
 
   const getAsset = useCallback(async (type: AssetType): Promise<GeneratedAsset | null> => {
     if (!user || !projectId) {
-      console.error('Authentication required for getAsset');
+      log.error('Authentication required for getAsset');
       return null;
     }
 
@@ -216,7 +231,7 @@ export const useGeneratedAssets = (projectId?: string) => {
     setError(null);
 
     try {
-      console.log(`getAsset: Fetching asset of type ${type} for project ${projectId} and user ${user.id}`);
+      log.debug(`getAsset: Fetching asset of type ${type} for project ${projectId}`);
       
       // First, verify the project belongs to the user
       const { data: project, error: projectError } = await supabase
@@ -227,11 +242,11 @@ export const useGeneratedAssets = (projectId?: string) => {
         .single();
 
       if (projectError || !project) {
-        console.error(`Project verification failed: ${projectError?.message || 'Project not found'}`);
+        log.error(`Project verification failed: ${projectError?.message || 'Project not found'}`);
         return null;
       }
 
-      console.log(`getAsset: Project ${projectId} verified for user ${user.id}`);
+      log.debug(`getAsset: Project verified`);
 
       // Use a direct query instead of the stored procedure
       const { data: assets, error: assetsError } = await supabase
@@ -242,11 +257,11 @@ export const useGeneratedAssets = (projectId?: string) => {
         .order('created_at', { ascending: false });
 
       if (assetsError) {
-        console.error(`Error fetching asset: ${assetsError.message}`);
+        log.error(`Error fetching asset: ${assetsError.message}`);
         return null;
       }
 
-      console.log(`getAsset: Found ${assets?.length || 0} assets of type ${type}`);
+      log.debug(`getAsset: Found ${assets?.length || 0} assets of type ${type}`);
 
       // Get the latest asset
       if (!assets || assets.length === 0) {
@@ -262,7 +277,7 @@ export const useGeneratedAssets = (projectId?: string) => {
       };
 
       if (!validateAsset(typedData.type, typedData.content)) {
-        console.error(`Asset validation failed for type ${type}`);
+        log.error(`Asset validation failed for type ${type}`);
         return null;
       }
 
@@ -270,7 +285,7 @@ export const useGeneratedAssets = (projectId?: string) => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch asset';
       setError(message);
-      console.error(`getAsset error: ${message}`);
+      log.error(`getAsset error: ${message}`);
       return null;
     } finally {
       setLoading(false);
@@ -332,7 +347,7 @@ export const useGeneratedAssets = (projectId?: string) => {
         type: data.type as AssetType
       };
 
-      toast.success('Asset saved successfully');
+      // Don't show success toast - it's too noisy
       return typedData;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save asset';
@@ -406,12 +421,12 @@ export const useGeneratedAssets = (projectId?: string) => {
   // Special function to get all logos for a project
   const getAllLogos = useCallback(async (): Promise<GeneratedLogo[]> => {
     if (!user) {
-      console.error('Authentication required for getAllLogos');
+      log.error('Authentication required for getAllLogos');
       return [];
     }
     
     if (!projectId) {
-      console.error('Project ID is required for getAllLogos');
+      log.error('Project ID is required for getAllLogos');
       return [];
     }
 
@@ -419,7 +434,7 @@ export const useGeneratedAssets = (projectId?: string) => {
     setError(null);
 
     try {
-      console.log(`getAllLogos: Fetching logos for project ${projectId} and user ${user.id}`);
+      log.debug(`getAllLogos: Fetching logos for project ${projectId}`);
       
       // First, verify the project belongs to the user
       const { data: project, error: projectError } = await supabase
@@ -430,12 +445,12 @@ export const useGeneratedAssets = (projectId?: string) => {
         .single();
 
       if (projectError || !project) {
-        console.error(`Project verification failed: ${projectError?.message || 'Project not found'}`);
+        log.error(`Project verification failed: ${projectError?.message || 'Project not found'}`);
         toast.error('Project not found or access denied');
         return [];
       }
 
-      console.log(`getAllLogos: Project ${projectId} verified for user ${user.id}`);
+      log.debug(`getAllLogos: Project verified`);
 
       // Use a direct query instead of the stored procedure
       const { data: logosAssets, error: logosError } = await supabase
@@ -446,18 +461,18 @@ export const useGeneratedAssets = (projectId?: string) => {
         .order('created_at', { ascending: false });
 
       if (logosError) {
-        console.error(`Error fetching logos assets: ${logosError.message}`);
+        log.error(`Error fetching logos assets: ${logosError.message}`);
         return [];
       }
 
-      console.log(`getAllLogos: Found ${logosAssets?.length || 0} logos assets`);
+      log.debug(`getAllLogos: Found ${logosAssets?.length || 0} logos assets`);
 
       // If we have a logos asset, parse it
       if (logosAssets && logosAssets.length > 0 && logosAssets[0].content) {
         try {
           const logosData = JSON.parse(logosAssets[0].content);
           if (logosData && logosData.logos && Array.isArray(logosData.logos)) {
-            console.log(`getAllLogos: Successfully parsed logos asset with ${logosData.logos.length} logos`);
+            log.debug(`getAllLogos: Successfully parsed logos asset with ${logosData.logos.length} logos`);
             // Ensure each logo has a unique ID
             return logosData.logos.map((logo, index) => ({
               ...logo,
@@ -465,7 +480,7 @@ export const useGeneratedAssets = (projectId?: string) => {
             }));
           }
         } catch (parseError) {
-          console.error(`Error parsing logos asset: ${parseError}`);
+          log.error(`Error parsing logos asset: ${parseError}`);
         }
       }
 
@@ -478,31 +493,31 @@ export const useGeneratedAssets = (projectId?: string) => {
         .order('created_at', { ascending: false });
 
       if (logoError) {
-        console.error(`Error fetching logo assets: ${logoError.message}`);
+        log.error(`Error fetching logo assets: ${logoError.message}`);
         return [];
       }
 
-      console.log(`getAllLogos: Found ${logoAssets?.length || 0} logo assets`);
+      log.debug(`getAllLogos: Found ${logoAssets?.length || 0} logo assets`);
 
       // If we have a logo asset, parse it
       if (logoAssets && logoAssets.length > 0 && logoAssets[0].content) {
         try {
           const logoData = JSON.parse(logoAssets[0].content);
           if (typeof logoData === 'object' && typeof logoData.url === 'string') {
-            console.log(`getAllLogos: Successfully parsed single logo asset`);
+            log.debug(`getAllLogos: Successfully parsed single logo asset`);
             return [logoData];
           }
         } catch (parseError) {
-          console.error(`Error parsing logo asset: ${parseError}`);
+          log.error(`Error parsing logo asset: ${parseError}`);
         }
       }
 
-      console.log(`getAllLogos: No logos found for project ${projectId}`);
+      log.debug(`getAllLogos: No logos found for project ${projectId}`);
       return [];
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch logos';
       setError(message);
-      console.error(`getAllLogos error: ${message}`);
+      log.error(`getAllLogos error: ${message}`);
       return [];
     } finally {
       setLoading(false);

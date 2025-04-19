@@ -227,22 +227,9 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Initialize generatedLogos with project data if available
   useEffect(() => {
     // Skip initialization if we already have logos or no project ID or no user
-    if (generatedLogos.length > 0) {
-      console.log(`AIContext: already have ${generatedLogos.length} logos in state, skipping initialization`);
+    if (generatedLogos.length > 0 || !projectId || !user) {
       return;
     }
-    
-    if (!projectId) {
-      console.log(`AIContext: no project ID available, skipping logo initialization`);
-      return;
-    }
-    
-    if (!user) {
-      console.log(`AIContext: no user available, skipping logo initialization`);
-      return;
-    }
-    
-    console.log(`AIContext: initializing logos for project ${projectId} for user ${user.id}`);
     
     // Clear any existing logos
     setGeneratedLogos([]);
@@ -276,7 +263,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
               throw logosError;
             }
             
-            console.log(`AIContext: Found ${logosAssets?.length || 0} logos assets`);
+            // Removed excessive logging
             
             // If we have a logos asset, parse it
             if (logosAssets && logosAssets.length > 0 && logosAssets[0].content) {
@@ -291,12 +278,10 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
                   }));
                   
                   // Set the logos in state
-                  console.log(`AIContext: loaded ${uniqueLogos.length} logos from 'logos' asset`);
                   setGeneratedLogos(uniqueLogos);
                   
                   // Find the selected logo
                   const selectedLogoId = allLogosContent.selectedLogoId;
-                  console.log(`AIContext: looking for selected logo with ID: ${selectedLogoId}`);
                   const selectedLogoFromAssets = uniqueLogos.find(logo => logo.id === selectedLogoId);
                   
                   // Set the selected logo if one was found
@@ -307,11 +292,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
                     setSelectedLogo(savedLogo);
                   }
                   
-                  // Log success
-                  toast({
-                    title: "Logos Restored",
-                    description: `Successfully restored ${uniqueLogos.length} logo concepts.`,
-                  });
+                  // Don't show success toast - it's too noisy
                   
                   return; // Exit early since we've loaded the logos
                 }

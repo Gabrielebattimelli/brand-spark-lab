@@ -23,15 +23,13 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
   },
 });
 
-// Test the connection to Supabase
+// Test the connection to Supabase - but only log errors
 (async () => {
   try {
-    console.log("Testing Supabase connection...");
-    const { data, error } = await supabase.from('projects').select('count').limit(1);
+    // Silent connection test
+    const { error } = await supabase.from('projects').select('count').limit(1);
     if (error) {
       console.error("Supabase connection test failed:", error);
-    } else {
-      console.log("Supabase connection test successful:", data);
     }
   } catch (err) {
     console.error("Supabase connection test error:", err);

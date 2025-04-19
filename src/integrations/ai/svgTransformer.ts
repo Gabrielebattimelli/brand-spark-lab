@@ -5,6 +5,21 @@
 import { Color } from "./colorPalette";
 import { Potrace } from 'potrace';
 
+// Logging utility to prevent excessive console logs
+// Set to false to disable verbose logging
+const ENABLE_VERBOSE_LOGGING = false;
+
+const log = {
+  debug: (message: string) => {
+    if (ENABLE_VERBOSE_LOGGING) {
+      console.log(message);
+    }
+  },
+  error: (message: string) => {
+    console.error(message);
+  }
+};
+
 /**
  * Interface for SVG transformation options
  */
@@ -44,8 +59,8 @@ export const convertToSVG = async (
   options: SVGTransformOptions = {}
 ): Promise<TransformedSVG> => {
   try {
-    console.log("Converting image to SVG:", imageUrl);
-    console.log("Options:", options);
+    log.debug("Converting image to SVG");
+    log.debug("SVG conversion options: " + JSON.stringify(options));
     
     // Load the image
     const response = await fetch(imageUrl);
