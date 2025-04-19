@@ -139,15 +139,15 @@ export const BrandStatementGenerator: React.FC<BrandStatementGeneratorProps> = (
         setGeneratedMissionStatements(statements);
         setGeneratedMissionStatementsWithExplanations(statementsWithExplanations);
 
-        // If no mission is selected yet, select the first one
-        if (!selectedMissionStatement && statements.length > 0) {
+        // Select the generated statement
+        if (statements.length > 0) {
           setSelectedMissionStatement(statements[0]);
           setSelectedMissionStatementExplanation(statementsWithExplanations[0].explanation);
           onSelectMission(statements[0]);
         }
 
         // Log for debugging
-        console.log("[DEBUG_LOG] Mission statements generated:", statements);
+        console.log("[DEBUG_LOG] Mission statement generated:", statements);
         console.log("[DEBUG_LOG] Selected mission statement:", selectedMissionStatement);
       } 
       else if (type === "vision") {
@@ -166,15 +166,15 @@ export const BrandStatementGenerator: React.FC<BrandStatementGeneratorProps> = (
         setGeneratedVisionStatements(statements);
         setGeneratedVisionStatementsWithExplanations(statementsWithExplanations);
 
-        // If no vision is selected yet, select the first one
-        if (!selectedVisionStatement && statements.length > 0) {
+        // Select the generated statement
+        if (statements.length > 0) {
           setSelectedVisionStatement(statements[0]);
           setSelectedVisionStatementExplanation(statementsWithExplanations[0].explanation);
           onSelectVision(statements[0]);
         }
 
         // Log for debugging
-        console.log("[DEBUG_LOG] Vision statements generated:", statements);
+        console.log("[DEBUG_LOG] Vision statement generated:", statements);
         console.log("[DEBUG_LOG] Selected vision statement:", selectedVisionStatement);
         console.log("[DEBUG_LOG] Mission statement after vision generation:", selectedMissionStatement);
       }
@@ -192,8 +192,8 @@ export const BrandStatementGenerator: React.FC<BrandStatementGeneratorProps> = (
         setGeneratedValuePropositions(statements);
         setGeneratedValuePropositionsWithExplanations(statementsWithExplanations);
 
-        // If no value proposition is selected yet, select the first one
-        if (!selectedValueProposition && statements.length > 0) {
+        // Select the generated statement
+        if (statements.length > 0) {
           setSelectedValueProposition(statements[0]);
           setSelectedValuePropositionExplanation(statementsWithExplanations[0].explanation);
           onSelectValueProposition(statements[0]);
@@ -214,8 +214,8 @@ export const BrandStatementGenerator: React.FC<BrandStatementGeneratorProps> = (
         setGeneratedBrandEssence(statements);
         setGeneratedBrandEssenceWithExplanations(statementsWithExplanations);
 
-        // If no brand essence is selected yet, select the first one
-        if (!selectedBrandEssence && statements.length > 0) {
+        // Select the generated statement
+        if (statements.length > 0) {
           setSelectedBrandEssence(statements[0]);
           setSelectedBrandEssenceExplanation(statementsWithExplanations[0].explanation);
           onSelectBrandEssence(statements[0]);
@@ -235,8 +235,8 @@ export const BrandStatementGenerator: React.FC<BrandStatementGeneratorProps> = (
         setGeneratedBrandVoice(statements);
         setGeneratedBrandVoiceCharacteristics(voiceCharacteristics);
 
-        // If no brand voice is selected yet, select the first one
-        if (!selectedBrandVoice && statements.length > 0) {
+        // Select the generated statement
+        if (statements.length > 0) {
           setSelectedBrandVoice(statements[0]);
           setSelectedBrandVoiceExplanation(voiceCharacteristics[0].explanation);
           onSelectBrandVoice(statements[0]);
@@ -376,7 +376,7 @@ export const BrandStatementGenerator: React.FC<BrandStatementGeneratorProps> = (
       return (
         <div className="flex flex-col items-center justify-center py-8">
           <p className="text-center text-gray-500 mb-4">
-            Click the button below to generate {type} statements for your brand
+            Click the button below to generate a {type} statement for your brand
           </p>
           <Button 
             onClick={() => handleGenerateStatements(type)}
@@ -390,12 +390,12 @@ export const BrandStatementGenerator: React.FC<BrandStatementGeneratorProps> = (
             ) : statements.length > 0 ? (
               <>
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Generate More Options
+                Regenerate Statement
               </>
             ) : (
               <>
                 <Sparkles className="mr-2 h-4 w-4" />
-                Generate {type.charAt(0).toUpperCase() + type.slice(1).replace(/([A-Z])/g, ' $1')} Statements
+                Generate {type.charAt(0).toUpperCase() + type.slice(1).replace(/([A-Z])/g, ' $1')} Statement
               </>
             )}
           </Button>
@@ -478,7 +478,7 @@ export const BrandStatementGenerator: React.FC<BrandStatementGeneratorProps> = (
             ) : (
               <>
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Generate More Options
+                Regenerate Statement
               </>
             )}
           </Button>
@@ -495,7 +495,7 @@ export const BrandStatementGenerator: React.FC<BrandStatementGeneratorProps> = (
           Brand Messaging
         </CardTitle>
         <CardDescription>
-          Generate mission, vision, and other key brand statements
+          Generate mission, vision, and other key brand messaging
         </CardDescription>
       </CardHeader>
       <CardContent>

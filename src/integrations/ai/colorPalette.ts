@@ -66,7 +66,7 @@ export const generateColorPalettes = async (
       params.colorPreferences = [];
     }
 
-    // Construct a prompt for the color palette generation
+    // Construct a prompt for the color palette generation with enhanced guidelines
     const prompt = `
       Create ${count} distinct and personalized color palettes for a brand with the following details:
       
@@ -77,36 +77,56 @@ export const generateColorPalettes = async (
       Additional Aesthetic Preferences: ${params.aestheticPreferences.slice(1).join(", ") || "none"}
       Color Preferences: ${params.colorPreferences?.join(", ") || "any suitable colors"}
       
-      For each palette, provide 5 colors that:
+      For each palette, provide 5 colors that work together as a cohesive system:
+      
       1. Primary - The main brand color that:
          - Aligns with the visual style and brand personality
-         - Is distinctive and memorable
+         - Is distinctive and memorable within the industry context
          - Works well in both light and dark contexts
+         - Has strong psychological associations with the brand values
+         - Can be used for logos, headers, and primary UI elements
+      
       2. Secondary - A complementary color that:
          - Creates visual harmony with the primary color
          - Supports the brand's aesthetic preferences
-         - Can be used for secondary elements and backgrounds
+         - Can be used for secondary elements, backgrounds, and supporting UI
+         - Provides sufficient contrast with the primary color
+         - Reinforces the brand personality in a different way than the primary
+      
       3. Accent - A color for highlights that:
          - Creates visual interest and draws attention
-         - Works well for calls-to-action
+         - Works well for calls-to-action, buttons, and important highlights
          - Complements both primary and secondary colors
+         - Has high visual impact but is used sparingly
+         - Creates effective visual hierarchy when combined with other colors
+      
       4. Light - A background color that:
-         - Provides good contrast with text
-         - Is easy on the eyes
-         - Works well with the other colors
+         - Provides good contrast with text (minimum 4.5:1 ratio for AA compliance)
+         - Is easy on the eyes for extended viewing
+         - Works well with the other colors in the palette
+         - Can be used for backgrounds, cards, and content areas
+         - Feels clean and unobtrusive
+      
       5. Dark - A text color that:
-         - Ensures readability
+         - Ensures readability on light backgrounds (minimum 4.5:1 ratio)
          - Creates sufficient contrast with light backgrounds
          - Maintains brand consistency
+         - Can be used for body text, headings, and UI elements
+         - Feels appropriate to the brand's tone and personality
       
       Important guidelines:
       - Ensure all colors are web-safe and accessible
-      - Maintain WCAG 2.1 AA contrast standards
-      - Colors should reflect the brand's personality and industry
+      - Maintain WCAG 2.1 AA contrast standards (minimum 4.5:1 for normal text)
+      - Colors should reflect the brand's personality and industry context
       - Consider the psychological impact of colors based on the brand's context
-      - Include both warm and cool tones for balance
+      - Include both warm and cool tones for balance when appropriate
       - If specific color preferences are provided, incorporate them meaningfully
-      - Ensure colors work well together in various combinations
+      - Ensure colors work well together in various combinations and contexts
+      - Consider how colors will appear in different applications (digital, print)
+      - Avoid colors that have strong negative associations in the brand's industry
+      - Create palettes with distinct personalities that align with the brand
+      - Ensure sufficient contrast between colors used adjacent to each other
+      - Consider color blindness and accessibility for all users
       
       Format your response as a JSON array with the following structure:
       [
@@ -305,7 +325,7 @@ export const regenerateColorPalettes = async (
       adjustedParams.aestheticPreferences = [...params.aestheticPreferences, "cool", "calm", "serene"];
     }
 
-    // Construct a prompt for the color palette regeneration
+    // Construct a prompt for the color palette regeneration with enhanced guidelines
     const prompt = `
       Regenerate ${count} distinct and personalized color palettes for a brand with the following details:
       
@@ -318,27 +338,45 @@ export const regenerateColorPalettes = async (
       
       User Feedback: ${feedback}
       
-      For each palette, provide 5 colors that:
+      Based on the user feedback, create new color palettes that specifically address their comments while maintaining brand coherence.
+      
+      For each palette, provide 5 colors that work together as a cohesive system:
+      
       1. Primary - The main brand color that:
          - Aligns with the visual style and brand personality
-         - Is distinctive and memorable
+         - Is distinctive and memorable within the industry context
          - Works well in both light and dark contexts
+         - Has strong psychological associations with the brand values
+         - Can be used for logos, headers, and primary UI elements
+         - Directly responds to the user's feedback
+      
       2. Secondary - A complementary color that:
          - Creates visual harmony with the primary color
          - Supports the brand's aesthetic preferences
-         - Can be used for secondary elements and backgrounds
+         - Can be used for secondary elements, backgrounds, and supporting UI
+         - Provides sufficient contrast with the primary color
+         - Reinforces the brand personality in a different way than the primary
+      
       3. Accent - A color for highlights that:
          - Creates visual interest and draws attention
-         - Works well for calls-to-action
+         - Works well for calls-to-action, buttons, and important highlights
          - Complements both primary and secondary colors
+         - Has high visual impact but is used sparingly
+         - Creates effective visual hierarchy when combined with other colors
+      
       4. Light - A background color that:
-         - Provides good contrast with text
-         - Is easy on the eyes
-         - Works well with the other colors
+         - Provides good contrast with text (minimum 4.5:1 ratio for AA compliance)
+         - Is easy on the eyes for extended viewing
+         - Works well with the other colors in the palette
+         - Can be used for backgrounds, cards, and content areas
+         - Feels clean and unobtrusive
+      
       5. Dark - A text color that:
-         - Ensures readability
+         - Ensures readability on light backgrounds (minimum 4.5:1 ratio)
          - Creates sufficient contrast with light backgrounds
          - Maintains brand consistency
+         - Can be used for body text, headings, and UI elements
+         - Feels appropriate to the brand's tone and personality
       
       Important guidelines:
       - Ensure all colors are web-safe and accessible

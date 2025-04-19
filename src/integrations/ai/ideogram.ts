@@ -158,10 +158,17 @@ const generateOptimizedPrompts = (params: LogoGenerationParams, count: number): 
     // Add color information
     prompt += `${colorDescriptions}. `;
 
-    // Add specific design instructions
+    // Add specific design instructions with enhanced details
     prompt += "The logo should be simple, memorable, and scalable. ";
-    prompt += "High-quality vector style, suitable for business cards and websites. ";
-    prompt += "Clean background, professional design, no text except the brand name.";
+    prompt += "Create a high-quality vector style logo with clean lines and professional appearance. ";
+    prompt += "Design should work well at both small and large sizes. ";
+    prompt += "Ensure the logo has strong visual impact and good figure-ground relationship. ";
+    prompt += "Use balanced composition with proper visual weight. ";
+    prompt += "Clean white background, no textures or gradients that would complicate reproduction. ";
+    prompt += "No text except the brand name, no taglines. ";
+    prompt += "Avoid generic stock imagery or clichéd symbols for the industry. ";
+    prompt += "The logo should be unique and instantly recognizable. ";
+    prompt += "Suitable for business cards, websites, social media, and physical signage.";
 
     prompts.push(prompt);
   }

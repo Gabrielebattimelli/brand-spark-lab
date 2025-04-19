@@ -85,6 +85,99 @@ const parseResponse = (text: string, pattern: RegExp): string => {
   return matches[1].trim();
 };
 
+// Enhanced helper function to parse response text with additional fields
+const parseResponseWithDetails = (block: string): { statement: string; explanation: string } => {
+  try {
+    // Extract the main statement and explanation
+    const statement = parseResponse(block, /Statement:\s*([^\n]+(?:\n[^E][^\n]+)*)/);
+    let explanation = parseResponse(block, /Explanation:\s*([^\n]+(?:\n[^(S|I|M|D|P|H|V|A|E)][^\n]+)*)/);
+    
+    // Look for additional fields that might be present
+    try {
+      // Mission statement specific fields
+      const industryAlignmentMatch = block.match(/Industry Alignment:\s*([^\n]+(?:\n[^(S|D|M|P|H|V|A|E)][^\n]+)*)/);
+      
+      // Vision statement specific fields
+      const missionAlignmentMatch = block.match(/Mission Alignment:\s*([^\n]+(?:\n[^(S|I|D|P|H|V|A|E)][^\n]+)*)/);
+      const strategicDirectionMatch = block.match(/Strategic Direction:\s*([^\n]+(?:\n[^(S|I|M|P|H|V|A|E)][^\n]+)*)/);
+      
+      // Value proposition specific fields
+      const differentiationMatch = block.match(/Differentiation:\s*([^\n]+(?:\n[^(S|I|M|P|A|H|V|E)][^\n]+)*)/);
+      const painPointsMatch = block.match(/Pain Points:\s*([^\n]+(?:\n[^(S|I|M|D|P|H|V|A|E)][^\n]+)*)/);
+      const painPointsAddressedMatch = block.match(/Pain Points Addressed:\s*([^\n]+(?:\n[^(S|I|M|D|P|H|V|A|E)][^\n]+)*)/);
+      const proofPointsMatch = block.match(/Proof Points:\s*([^\n]+(?:\n[^(S|I|M|D|A|H|V|E)][^\n]+)*)/);
+      
+      // Brand essence specific fields
+      const purposeConnectionMatch = block.match(/Purpose Connection:\s*([^\n]+(?:\n[^(S|I|M|D|P|A|H|V|E)][^\n]+)*)/);
+      
+      // Core values specific fields
+      const applicationMatch = block.match(/Application:\s*([^\n]+(?:\n[^(S|I|M|D|P|H|V|E)][^\n]+)*)/);
+      const exampleMatch = block.match(/Example:\s*([^\n]+(?:\n[^(S|I|M|D|P|A|H|V)][^\n]+)*)/);
+      
+      // Brand voice specific fields
+      const whenToUseMatch = block.match(/When to Use:\s*([^\n]+(?:\n[^(S|I|M|D|P|A|H|E)][^\n]+)*)/);
+      const whenToModerateMatch = block.match(/When to Moderate:\s*([^\n]+(?:\n[^(S|I|M|D|P|A|H|V|E)][^\n]+)*)/);
+      
+      // Generic fields
+      const highlightMatch = block.match(/Highlight:\s*([^\n]+(?:\n[^(S|I|M|D|P|A|E|V|W)][^\n]+)*)/);
+      
+      // Add any additional fields to the explanation
+      if (industryAlignmentMatch) {
+        explanation += "\n\nIndustry Alignment: " + industryAlignmentMatch[1].trim();
+      }
+      if (missionAlignmentMatch) {
+        explanation += "\n\nMission Alignment: " + missionAlignmentMatch[1].trim();
+      }
+      if (strategicDirectionMatch) {
+        explanation += "\n\nStrategic Direction: " + strategicDirectionMatch[1].trim();
+      }
+      if (differentiationMatch) {
+        explanation += "\n\nDifferentiation: " + differentiationMatch[1].trim();
+      }
+      if (painPointsMatch) {
+        explanation += "\n\nPain Points: " + painPointsMatch[1].trim();
+      }
+      if (painPointsAddressedMatch) {
+        explanation += "\n\nPain Points Addressed: " + painPointsAddressedMatch[1].trim();
+      }
+      if (proofPointsMatch) {
+        explanation += "\n\nProof Points: " + proofPointsMatch[1].trim();
+      }
+      if (purposeConnectionMatch) {
+        explanation += "\n\nPurpose Connection: " + purposeConnectionMatch[1].trim();
+      }
+      if (applicationMatch) {
+        explanation += "\n\nApplication: " + applicationMatch[1].trim();
+      }
+      if (exampleMatch) {
+        explanation += "\n\nExample: " + exampleMatch[1].trim();
+      }
+      if (whenToUseMatch) {
+        explanation += "\n\nWhen to Use: " + whenToUseMatch[1].trim();
+      }
+      if (whenToModerateMatch) {
+        explanation += "\n\nWhen to Moderate: " + whenToModerateMatch[1].trim();
+      }
+      if (highlightMatch) {
+        explanation += "\n\nHighlight: " + highlightMatch[1].trim();
+      }
+    } catch (error) {
+      // If we fail to parse additional fields, just continue with the basic explanation
+      console.warn('Failed to parse additional fields:', error);
+    }
+    
+    // Remove any markdown formatting (asterisks) from the explanation
+    explanation = explanation.replace(/\*\*\*(.*?)\*\*\*/g, '$1')  // Bold italic
+                           .replace(/\*\*(.*?)\*\*/g, '$1')        // Bold
+                           .replace(/\*(.*?)\*/g, '$1');           // Italic
+    
+    return { statement, explanation };
+  } catch (error) {
+    console.error('Failed to parse statement block:', block);
+    throw error;
+  }
+};
+
 // Generate brand name ideas with explanations
 export const generateBrandNames = async (
   apiKey: string,
@@ -108,11 +201,15 @@ export const generateBrandNames = async (
     - Easy to pronounce and spell
     - Available as a domain name (conceptually, don't actually check)
     - Aligned with the business values and target audience
+    - Short (1-3 words maximum)
+    - Not generic or descriptive of the service/product directly
+    - Avoid overused prefixes/suffixes like "i-", "e-", "-ify", "-ly"
 
     For each name, provide:
-    1. The brand name
+    1. The brand name (just the name itself, no taglines or descriptors)
     2. A brief explanation (1-2 sentences) of why this name works well for the business
     3. How it relates to the industry or business description
+    4. Any cultural or linguistic considerations
 
     Format each suggestion as:
     Name: [Brand Name]
@@ -180,15 +277,13 @@ export const generateMissionStatements = async (
     // Call the Edge Function with type 'mission'
     const content = await callEdgeFunction('mission', data, apiKey);
 
-    // Parse the response to extract statements and explanations
+    // Parse the response to extract statements and explanations with enhanced details
     const statementBlocks = content.split(/(?=Statement:)/);
     const statementsWithExplanations = statementBlocks
       .filter(block => block.trim().length > 0)
       .map(block => {
         try {
-          const statement = parseResponse(block, /Statement:\s*([^\n]+(?:\n[^E][^\n]+)*)/);
-          const explanation = parseResponse(block, /Explanation:\s*([^\n]+(?:\n[^S][^\n]+)*)/);
-          return { statement, explanation };
+          return parseResponseWithDetails(block);
         } catch (error) {
           console.error('Failed to parse statement block:', block);
           return null;
@@ -240,20 +335,21 @@ export const generateVisionStatements = async (
     // Call the Edge Function with type 'vision'
     const content = await callEdgeFunction('vision', data, apiKey);
 
-    // Parse the response to extract statements and explanations
+    // Parse the response to extract statements and explanations with enhanced details
     const statementBlocks = content.split(/(?=Statement:)/);
     const statementsWithExplanations = statementBlocks
       .filter(block => block.trim().length > 0)
       .map(block => {
-        const statementMatch = block.match(/Statement:\s*([^\n]+(?:\n[^E][^\n]+)*)/);
-        const explanationMatch = block.match(/Explanation:\s*([^\n]+(?:\n[^S][^\n]+)*)/);
-
-        const statement = statementMatch ? statementMatch[1].trim() : "";
-        const explanation = explanationMatch ? explanationMatch[1].trim() : "";
-
-        return { statement, explanation };
+        try {
+          return parseResponseWithDetails(block);
+        } catch (error) {
+          console.error('Failed to parse statement block:', block);
+          return null;
+        }
       })
-      .filter(item => item.statement && item.explanation);
+      .filter((item): item is StatementWithExplanation => 
+        item !== null && item.statement && item.explanation
+      );
 
     return statementsWithExplanations.length > 0 ? statementsWithExplanations : [{ 
       statement: content, 
@@ -293,17 +389,29 @@ export const generateValuePropositions = async (
 
     Each value proposition should:
     - Clearly communicate the unique value the brand offers
-    - Be concise and memorable (1-2 sentences)
-    - Focus on customer benefits rather than features
-    - Differentiate the brand from competitors
+    - Be concise and memorable (1-2 sentences, maximum 25 words)
+    - Focus on specific customer benefits rather than features
+    - Address a clear pain point or desire of the target audience
+    - Differentiate the brand from competitors in a meaningful way
+    - Use concrete, specific language rather than vague claims
+    - Be believable and provable, not making exaggerated claims
+    - Use active voice and present tense
+    - Avoid industry jargon and buzzwords
+    - Include a clear "so that" benefit (explicit or implicit)
 
     For each value proposition, provide:
-    1. Statement: The value proposition itself
+    1. Statement: The value proposition itself (clear, concise, and impactful)
     2. Explanation: Why this value proposition works well for this brand and how it connects with the target audience
+    3. Pain Points: The specific customer problems or desires this addresses
+    4. Differentiation: How this sets the brand apart from competitors
+    5. Proof Points: How the business can demonstrate or validate this claim
 
     Format each as:
     Statement: [Value Proposition]
     Explanation: [Why this works]
+    Pain Points: [Customer problems addressed]
+    Differentiation: [Competitive advantage]
+    Proof Points: [How to validate the claim]
     `;
 
     const result = await model.generateContent(prompt);
@@ -315,10 +423,26 @@ export const generateValuePropositions = async (
       .filter(block => block.trim().length > 0)
       .map(block => {
         const statementMatch = block.match(/Statement:\s*([^\n]+(?:\n[^E][^\n]+)*)/);
-        const explanationMatch = block.match(/Explanation:\s*([^\n]+(?:\n[^S][^\n]+)*)/);
+        const explanationMatch = block.match(/Explanation:\s*([^\n]+(?:\n[^P][^\n]+)*)/);
+        
+        // Extract additional information if available, but don't require it
+        const painPointsMatch = block.match(/Pain Points:\s*([^\n]+(?:\n[^D][^\n]+)*)/);
+        const differentiationMatch = block.match(/Differentiation:\s*([^\n]+(?:\n[^P][^\n]+)*)/);
+        const proofPointsMatch = block.match(/Proof Points:\s*([^\n]+(?:\n[^S][^\n]+)*)/);
 
         const statement = statementMatch ? statementMatch[1].trim() : "";
-        const explanation = explanationMatch ? explanationMatch[1].trim() : "";
+        let explanation = explanationMatch ? explanationMatch[1].trim() : "";
+        
+        // Enhance explanation with additional information if available
+        if (painPointsMatch) {
+          explanation += "\n\nPain Points: " + painPointsMatch[1].trim();
+        }
+        if (differentiationMatch) {
+          explanation += "\n\nDifferentiation: " + differentiationMatch[1].trim();
+        }
+        if (proofPointsMatch) {
+          explanation += "\n\nProof Points: " + proofPointsMatch[1].trim();
+        }
 
         return { statement, explanation };
       })
@@ -368,19 +492,30 @@ export const generateBrandEssence = async (
 
     A brand essence is a 2-5 word phrase that captures the fundamental nature or core identity of a brand.
     It should be:
-    - Timeless and enduring
-    - Simple and memorable
-    - Authentic to the brand's values
-    - Emotionally resonant
-    - Differentiating from competitors
+    - Extremely concise (2-5 words maximum)
+    - Timeless and enduring, not tied to specific products or trends
+    - Simple, memorable, and instantly understandable
+    - Authentic to the brand's values and culture
+    - Emotionally resonant with both internal and external audiences
+    - Distinctive and ownable in the competitive landscape
+    - Serve as a filter for all brand decisions and communications
+    - Express the brand's ultimate purpose beyond profit
+    - Capture the "soul" of the brand, not just its function
+    - Be aspirational yet authentic
 
     For each brand essence, provide:
-    1. Essence: The 2-5 word brand essence statement
+    1. Essence: The 2-5 word brand essence statement (no more than 5 words)
     2. Explanation: Why this essence captures the core of the brand and how it relates to the mission, vision, and values
+    3. Purpose Connection: How this essence relates to the brand's deeper purpose
+    4. Differentiation: How this essence stands apart from competitors in the same industry
+    5. Application: How this essence can guide brand decisions and communications
 
     Format each as:
     Essence: [Brand Essence]
-    Explanation: [Why this works]
+    Explanation: [Brief explanation]
+    Purpose Connection: [How it relates to brand purpose]
+    Differentiation: [How it stands apart from competitors]
+    Application: [How it guides brand decisions]
     `;
 
     const result = await model.generateContent(prompt);
@@ -392,10 +527,26 @@ export const generateBrandEssence = async (
       .filter(block => block.trim().length > 0)
       .map(block => {
         const statementMatch = block.match(/Essence:\s*([^\n]+(?:\n[^E][^\n]+)*)/);
-        const explanationMatch = block.match(/Explanation:\s*([^\n]+(?:\n[^E][^\n]+)*)/);
+        const explanationMatch = block.match(/Explanation:\s*([^\n]+(?:\n[^P][^\n]+)*)/);
+        
+        // Extract additional information if available, but don't require it
+        const purposeMatch = block.match(/Purpose Connection:\s*([^\n]+(?:\n[^D][^\n]+)*)/);
+        const differentiationMatch = block.match(/Differentiation:\s*([^\n]+(?:\n[^A][^\n]+)*)/);
+        const applicationMatch = block.match(/Application:\s*([^\n]+(?:\n[^E][^\n]+)*)/);
 
         const statement = statementMatch ? statementMatch[1].trim() : "";
-        const explanation = explanationMatch ? explanationMatch[1].trim() : "";
+        let explanation = explanationMatch ? explanationMatch[1].trim() : "";
+        
+        // Enhance explanation with additional information if available
+        if (purposeMatch) {
+          explanation += "\n\nPurpose: " + purposeMatch[1].trim();
+        }
+        if (differentiationMatch) {
+          explanation += "\n\nDifferentiation: " + differentiationMatch[1].trim();
+        }
+        if (applicationMatch) {
+          explanation += "\n\nApplication: " + applicationMatch[1].trim();
+        }
 
         return { statement, explanation };
       })
