@@ -1,12 +1,26 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useUserSettings } from "@/hooks/use-user-settings";
+import { toast } from "sonner";
 import { GeneratedLogo } from "@/integrations/ai/ideogram";
 import { StatementWithExplanation, ValueWithExplanation, VoiceCharacteristic } from "@/integrations/ai/gemini";
 import { GeneratedColorPalette } from "@/integrations/ai/colorPalette";
+import { useProjectData, StepType } from "@/hooks/use-project-data";
+import { useLocation, useParams } from "react-router-dom";
+import { useProjects } from "@/hooks/use-projects";
 
 // Define the interface for brand names with explanations
 export interface BrandNameWithExplanation {
   name: string;
   explanation: string;
+  projectId?: string; // Add project ID to track which project the brand name belongs to
+}
+
+// Define the shape of project data
+interface ProjectData {
+  logo?: GeneratedLogo;
+  aiGenerated?: {
+    logo?: GeneratedLogo;
+  };
 }
 
 // Define the shape of the AI context
@@ -23,9 +37,9 @@ interface AIContextType {
   generatedBrandNames: string[];
   setGeneratedBrandNames: (names: string[]) => void;
   generatedBrandNamesWithExplanations: BrandNameWithExplanation[];
-  setGeneratedBrandNamesWithExplanations: (namesWithExplanations: BrandNameWithExplanation[]) => void;
+  setGeneratedBrandNamesWithExplanations: (namesWithExplanations: BrandNameWithExplanation[], projectId?: string) => void;
   selectedBrandName: string;
-  setSelectedBrandName: (name: string) => void;
+  setSelectedBrandName: (name: string, projectId?: string) => void;
 
   generatedMissionStatements: string[];
   setGeneratedMissionStatements: (statements: string[]) => void;
@@ -99,10 +113,31 @@ const AIContext = createContext<AIContextType | undefined>(undefined);
 
 // Provider component
 export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // API Keys
-  const [geminiApiKey, setGeminiApiKey] = useState<string>("");
-  const [ideogramApiKey, setIdeogramApiKey] = useState<string>("");
-  const [clipdropApiKey, setClipdropApiKey] = useState<string>("");
+  // Use the user settings hook for API keys persistence
+  const { settings, loading: settingsLoading, saveSettings } = useUserSettings();
+  const { pathname } = useLocation();
+  const { projectId } = useParams();
+
+  // Function to get project data
+  const getProjectData = async () => {
+    if (!projectId) return null;
+    
+    try {
+      const { getStepData } = useProjectData();
+      const data = await getStepData('logo' as StepType);
+      console.log('Retrieved project data:', data);
+      return data as ProjectData;
+    } catch (error) {
+      console.error('Error getting project data:', error);
+      return null;
+    }
+  };
+  
+  // API Keys - now initialized from Supabase
+  const [geminiApiKey, setGeminiApiKeyState] = useState<string>("");
+  const [ideogramApiKey, setIdeogramApiKeyState] = useState<string>("");
+  const [clipdropApiKey, setClipdropApiKeyState] = useState<string>("");
+  const [keysLoaded, setKeysLoaded] = useState<boolean>(false);
 
   // Generated content
   const [generatedBrandNames, setGeneratedBrandNames] = useState<string[]>([]);
@@ -183,6 +218,83 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     setSelectedLogo(null);
   };
 
+  // Initialize generatedLogos with project data if available
+  useEffect(() => {
+    const initializeLogos = async () => {
+      try {
+        const projectData = await getProjectData();
+        if (projectData?.logo || projectData?.aiGenerated?.logo) {
+          const savedLogo = projectData.logo || projectData.aiGenerated.logo;
+          console.log('Initializing generatedLogos with saved logo:', savedLogo);
+          setGeneratedLogos([savedLogo]);
+          setSelectedLogo(savedLogo);
+        }
+      } catch (error) {
+        console.error('Error initializing generatedLogos:', error);
+      }
+    };
+
+    initializeLogos();
+  }, [getProjectData, projectId]);
+
+  // Set up API key setters that persist to Supabase
+  const setGeminiApiKey = (key: string) => {
+    console.log('Setting Gemini API key:', key);
+    setGeminiApiKeyState(key);
+    saveSettings({ gemini_api_key: key })
+      .then(result => {
+        console.log('Gemini API key saved successfully:', result);
+      })
+      .catch(error => {
+        console.error('Failed to save Gemini API key:', error);
+      });
+  };
+
+  const setIdeogramApiKey = (key: string) => {
+    console.log('Setting Ideogram API key:', key);
+    setIdeogramApiKeyState(key);
+    saveSettings({ ideogram_api_key: key })
+      .then(result => {
+        console.log('Ideogram API key saved successfully:', result);
+      })
+      .catch(error => {
+        console.error('Failed to save Ideogram API key:', error);
+      });
+  };
+
+  const setClipdropApiKey = (key: string) => {
+    console.log('Setting ClipDrop API key:', key);
+    setClipdropApiKeyState(key);
+    saveSettings({ clipdrop_api_key: key })
+      .then(result => {
+        console.log('ClipDrop API key saved successfully:', result);
+      })
+      .catch(error => {
+        console.error('Failed to save ClipDrop API key:', error);
+      });
+  };
+
+  // Load API keys from settings when they change
+  useEffect(() => {
+    if (settings) {
+      console.log('Loading API keys from settings:', settings);
+      setGeminiApiKeyState(settings.gemini_api_key || "");
+      setIdeogramApiKeyState(settings.ideogram_api_key || "");
+      setClipdropApiKeyState(settings.clipdrop_api_key || "");
+      setKeysLoaded(true);
+    }
+  }, [settings]);
+  
+  // Debug log when keys change
+  useEffect(() => {
+    console.log('API keys state updated:', { 
+      geminiApiKey, 
+      ideogramApiKey, 
+      clipdropApiKey,
+      keysLoaded 
+    });
+  }, [geminiApiKey, ideogramApiKey, clipdropApiKey, keysLoaded]);
+
   const value = {
     // API Keys
     geminiApiKey,
@@ -191,6 +303,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     setIdeogramApiKey,
     clipdropApiKey,
     setClipdropApiKey,
+    keysLoaded,
 
     // Generated content
     generatedBrandNames,

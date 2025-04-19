@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Json } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 
-export type AssetType = 'logo' | 'color_palette' | 'brand_name' | 'mission_statement' | 'vision_statement' | 'value_proposition' | 'brand_essence' | 'brand_voice';
+export type AssetType = 'logo' | 'color_palette' | 'color_palette_suggestions' | 'color_palette_preferences' | 'brand_name' | 'brand_name_suggestions' | 'mission_statement' | 'vision_statement' | 'value_proposition' | 'brand_essence' | 'brand_voice';
 
 export interface GeneratedAsset {
   id: string;
@@ -35,6 +35,47 @@ const ASSET_VALIDATORS: Record<AssetType, (content: string) => boolean> = {
                typeof color.hex === 'string' && 
                typeof color.name === 'string'
              );
+    } catch {
+      return false;
+    }
+  },
+  brand_name_suggestions: (content) => {
+    try {
+      const data = JSON.parse(content);
+      return Array.isArray(data) && 
+             data.every((item: any) => 
+               typeof item === 'object' && 
+               typeof item.name === 'string' && 
+               typeof item.explanation === 'string'
+             );
+    } catch {
+      return false;
+    }
+  },
+  color_palette_suggestions: (content) => {
+    try {
+      const data = JSON.parse(content);
+      return Array.isArray(data) && 
+             data.every((item: any) => 
+               typeof item === 'object' && 
+               typeof item.id === 'string' && 
+               Array.isArray(item.colors) && 
+               item.colors.every((color: any) => 
+                 typeof color === 'object' && 
+                 typeof color.hex === 'string' && 
+                 typeof color.name === 'string'
+               )
+             );
+    } catch {
+      return false;
+    }
+  },
+  color_palette_preferences: (content) => {
+    try {
+      const data = JSON.parse(content);
+      return typeof data === 'object' &&
+             Array.isArray(data.aestheticPreferences) &&
+             Array.isArray(data.colorPreferences);
     } catch {
       return false;
     }
@@ -155,9 +196,9 @@ export const useGeneratedAssets = (projectId?: string) => {
         .eq('type', type)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         toast.error(error.message);
         throw new Error(error.message);
       }

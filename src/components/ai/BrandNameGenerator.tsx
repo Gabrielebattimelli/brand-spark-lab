@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAI } from "@/contexts/AIContext";
+import { useParams } from "react-router-dom";
+import { useBrandNameStorage } from "@/hooks/use-brand-name-storage";
 import { generateBrandNames } from "@/integrations/ai/gemini";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +21,7 @@ export const BrandNameGenerator: React.FC<BrandNameGeneratorProps> = ({
   keywords,
   onSelect,
 }) => {
+  const { projectId } = useParams<{ projectId?: string }>(); // Get the current project ID from the URL
   const { 
     geminiApiKey,
     generatedBrandNames, 
@@ -33,6 +36,10 @@ export const BrandNameGenerator: React.FC<BrandNameGeneratorProps> = ({
 
   const [error, setError] = useState<string | null>(null);
   const [expandedNames, setExpandedNames] = useState<Record<string, boolean>>({});
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  
+  // Use our brand name storage hook
+  const { loadBrandNames, saveBrandNames } = useBrandNameStorage(projectId);
 
   const toggleNameExpansion = (name: string) => {
     setExpandedNames(prev => ({
@@ -40,6 +47,53 @@ export const BrandNameGenerator: React.FC<BrandNameGeneratorProps> = ({
       [name]: !prev[name]
     }));
   };
+
+  // Initial load of brand names from the database
+  useEffect(() => {
+    if (!initialLoadComplete && projectId) {
+      console.log('Loading brand names from Supabase for project:', projectId);
+      
+      const fetchBrandNames = async () => {
+        try {
+          // Fetch brand names without clearing existing ones first
+          // This prevents the infinite update loop
+          const { brandNames, brandNamesWithExplanations, selectedName } = await loadBrandNames();
+          
+          if (brandNamesWithExplanations.length > 0) {
+            console.log(`Found ${brandNamesWithExplanations.length} stored brand names for project ${projectId}:`, brandNamesWithExplanations);
+            
+            // Verify these brand names belong to the current project
+            // This is a safety check in case there's an issue with the database queries
+            const belongsToCurrentProject = !brandNamesWithExplanations[0]?.projectId || 
+                                           brandNamesWithExplanations[0].projectId === projectId;
+            
+            if (!belongsToCurrentProject) {
+              console.error(`Brand names belong to project ${brandNamesWithExplanations[0].projectId}, not current project ${projectId}`);
+              // Don't load these brand names as they belong to a different project
+            } else {
+              // Only update state if the brand names belong to the current project
+              setGeneratedBrandNames(brandNames);
+              setGeneratedBrandNamesWithExplanations(brandNamesWithExplanations);
+              
+              if (selectedName) {
+                console.log(`Setting selected brand name for project ${projectId}:`, selectedName);
+                setSelectedBrandName(selectedName);
+                onSelect(selectedName);
+              }
+            }
+          } else {
+            console.log(`No brand names found for project ${projectId}`);
+          }
+        } catch (err) {
+          console.error(`Error loading brand names for project ${projectId}:`, err);
+        } finally {
+          setInitialLoadComplete(true);
+        }
+      };
+      
+      fetchBrandNames();
+    }
+  }, [projectId, initialLoadComplete, loadBrandNames, setGeneratedBrandNames, setGeneratedBrandNamesWithExplanations, setSelectedBrandName, onSelect]);
 
   const handleGenerateNames = async () => {
     if (!geminiApiKey) {
@@ -51,6 +105,7 @@ export const BrandNameGenerator: React.FC<BrandNameGeneratorProps> = ({
     setIsGeneratingText(true);
 
     try {
+      // Generate brand names without clearing existing ones first to prevent potential infinite loops
       const namesWithExplanations = await generateBrandNames(
         geminiApiKey,
         industry,
@@ -59,10 +114,24 @@ export const BrandNameGenerator: React.FC<BrandNameGeneratorProps> = ({
         8 // Generate 8 name options
       );
 
+      // Add project ID to each brand name for additional verification
+      const namesWithProjectId = namesWithExplanations.map(item => ({
+        ...item,
+        projectId: projectId // Store the project ID with each brand name
+      }));
+
       // Extract just the names for the existing state
-      const names = namesWithExplanations.map(item => item.name);
+      const names = namesWithProjectId.map(item => item.name);
+      
+      // Update state with new brand names
       setGeneratedBrandNames(names);
-      setGeneratedBrandNamesWithExplanations(namesWithExplanations);
+      setGeneratedBrandNamesWithExplanations(namesWithProjectId);
+
+      // Save to Supabase
+      if (projectId) {
+        console.log(`Saving brand names to Supabase for project ${projectId}`);
+        await saveBrandNames(namesWithProjectId);
+      }
 
       // If no name is selected yet, select the first one
       if (!selectedBrandName && names.length > 0) {
@@ -70,7 +139,7 @@ export const BrandNameGenerator: React.FC<BrandNameGeneratorProps> = ({
         onSelect(names[0]);
       }
     } catch (err) {
-      console.error("Error generating brand names:", err);
+      console.error(`Error generating brand names for project ${projectId}:`, err);
       setError("Failed to generate brand names. Please try again.");
     } finally {
       setIsGeneratingText(false);
@@ -80,6 +149,19 @@ export const BrandNameGenerator: React.FC<BrandNameGeneratorProps> = ({
   const handleSelectName = (name: string) => {
     setSelectedBrandName(name);
     onSelect(name);
+    
+    // Save the selected name to Supabase
+    if (projectId && generatedBrandNamesWithExplanations.length > 0) {
+      console.log(`Saving selected brand name to Supabase for project ${projectId}:`, name);
+      
+      // Ensure we're saving brand names with the current project ID
+      const namesWithProjectId = generatedBrandNamesWithExplanations.map(item => ({
+        ...item,
+        projectId: projectId // Ensure project ID is set correctly
+      }));
+      
+      saveBrandNames(namesWithProjectId, name);
+    }
   };
 
   // Find explanation for a given name

@@ -31,7 +31,9 @@ export interface GeneratedColorPalette {
 export const generateColorPalettes = async (
   apiKey: string,
   params: ColorPaletteGenerationParams,
-  count: number = 3
+  count: number = 3,
+  maxRetries: number = 3,
+  initialDelay: number = 2000
 ): Promise<GeneratedColorPalette[]> => {
   try {
     console.log("Generating color palettes with Gemini...");
@@ -125,12 +127,29 @@ export const generateColorPalettes = async (
     `;
 
     let response;
-    try {
-      const result = await model.generateContent(prompt);
-      response = result.response.text();
-    } catch (error) {
-      console.error("Error calling Gemini API:", error);
-      throw new Error("Failed to generate color palettes. Please check your API key and try again.");
+    let retryCount = 0;
+    let delay = initialDelay;
+
+    while (retryCount < maxRetries) {
+      try {
+        const result = await model.generateContent(prompt);
+        response = result.response.text();
+        break;
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('429')) {
+          console.warn(`Rate limit hit. Retrying in ${delay}ms... (Attempt ${retryCount + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2; // Exponential backoff
+          retryCount++;
+          continue;
+        }
+        console.error("Error calling Gemini API:", error);
+        throw new Error("Failed to generate color palettes. Please check your API key and try again.");
+      }
+    }
+
+    if (!response) {
+      throw new Error("No response received from Gemini API after retries");
     }
 
     // Parse and validate the response

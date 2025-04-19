@@ -139,6 +139,36 @@ export type Database = {
         }
         Relationships: []
       }
+      user_settings: {
+        Row: {
+          id: string
+          user_id: string
+          gemini_api_key: string | null
+          ideogram_api_key: string | null
+          clipdrop_api_key: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          gemini_api_key?: string | null
+          ideogram_api_key?: string | null
+          clipdrop_api_key?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          gemini_api_key?: string | null
+          ideogram_api_key?: string | null
+          clipdrop_api_key?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

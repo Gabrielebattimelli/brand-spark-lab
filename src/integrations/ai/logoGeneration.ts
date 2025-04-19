@@ -153,15 +153,18 @@ export async function generateLogoConcepts(
         throw new LogoGenerationError(errorMessage, 'CLIPDROP_API_ERROR');
       }
 
-      // Get the binary image data
+      // Get the binary image data and convert to base64
       const imageBlob = await response.blob();
-      
-      // Create a URL for the blob
-      const imageUrl = URL.createObjectURL(imageBlob);
-      
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(imageBlob);
+      });
+
       logos = [{
         id: "logo-1",
-        url: imageUrl,
+        url: imageBase64,
         prompt,
         selected: false,
       }];
@@ -275,15 +278,18 @@ export async function regenerateLogoConcepts(
         throw new LogoGenerationError(errorMessage, 'CLIPDROP_API_ERROR');
       }
 
-      // Get the binary image data
+      // Get the binary image data and convert to base64
       const imageBlob = await response.blob();
-      
-      // Create a URL for the blob
-      const imageUrl = URL.createObjectURL(imageBlob);
-      
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(imageBlob);
+      });
+
       logos = [{
         id: "logo-1",
-        url: imageUrl,
+        url: imageBase64,
         prompt,
         selected: false,
       }];

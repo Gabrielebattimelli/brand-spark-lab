@@ -34,6 +34,7 @@ export default function Settings() {
   const [localGeminiKey, setLocalGeminiKey] = useState(geminiApiKey);
   const [localIdeogramKey, setLocalIdeogramKey] = useState(ideogramApiKey);
   const [localClipdropKey, setLocalClipdropKey] = useState(clipdropApiKey);
+  const [isSavingKeys, setIsSavingKeys] = useState(false);
 
   // Load user data
   useEffect(() => {
@@ -46,6 +47,14 @@ export default function Settings() {
       }
     }
   }, [user]);
+  
+  // Update local key state when context values change
+  useEffect(() => {
+    console.log('API keys from context updated', { geminiApiKey, ideogramApiKey, clipdropApiKey });
+    setLocalGeminiKey(geminiApiKey || "");
+    setLocalIdeogramKey(ideogramApiKey || "");
+    setLocalClipdropKey(clipdropApiKey || "");
+  }, [geminiApiKey, ideogramApiKey, clipdropApiKey]);
 
   // Save profile changes
   const handleSaveProfile = async () => {
@@ -57,15 +66,29 @@ export default function Settings() {
   };
 
   // Save API keys
-  const handleSaveApiKeys = () => {
-    setGeminiApiKey(localGeminiKey);
-    setIdeogramApiKey(localIdeogramKey);
-    setClipdropApiKey(localClipdropKey);
+  const handleSaveApiKeys = async () => {
+    setIsSavingKeys(true);
     
-    toast({
-      title: "API keys updated",
-      description: "Your API keys have been updated successfully.",
-    });
+    try {
+      // Call the context methods which will save to Supabase
+      setGeminiApiKey(localGeminiKey);
+      setIdeogramApiKey(localIdeogramKey);
+      setClipdropApiKey(localClipdropKey);
+      
+      toast({
+        title: "API keys updated",
+        description: "Your API keys have been updated successfully.",
+      });
+    } catch (error) {
+      console.error('Error saving API keys:', error);
+      toast({
+        title: "Error saving API keys",
+        description: "There was a problem saving your API keys. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSavingKeys(false);
+    }
   };
 
   return (
@@ -245,9 +268,22 @@ export default function Settings() {
                   </div>
                 </CardContent>
                 <CardFooter>
-                  <Button onClick={handleSaveApiKeys} className="flex items-center">
-                    <Save size={16} className="mr-2" />
-                    Save API Keys
+                  <Button 
+                    onClick={handleSaveApiKeys} 
+                    className="flex items-center"
+                    disabled={isSavingKeys}
+                  >
+                    {isSavingKeys ? (
+                      <>
+                        <div className="animate-spin mr-2">⟳</div>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} className="mr-2" />
+                        Save API Keys
+                      </>
+                    )}
                   </Button>
                 </CardFooter>
               </Card>

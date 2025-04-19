@@ -13,7 +13,7 @@ import { Competition } from "@/components/wizard/steps/Competition";
 import { Aesthetics } from "@/components/wizard/steps/Aesthetics";
 import { LogoGeneration } from "@/components/wizard/steps/LogoGeneration";
 import { Results } from "@/components/wizard/steps/Results";
-import { APIKeySetup } from "@/components/ai/APIKeySetup";
+// APIKeySetup import removed
 import { BrandNameGenerator } from "@/components/ai/BrandNameGenerator";
 import { BrandStatementGenerator } from "@/components/ai/BrandStatementGenerator";
 import { ColorPaletteGenerator } from "@/components/ai/ColorPaletteGenerator";
@@ -86,7 +86,6 @@ export interface FormData {
 
 // Define the steps in order
 const STEPS: string[] = [
-  'api-setup',
   'basics',
   'brand-name-generator',
   'audience',
@@ -199,7 +198,7 @@ interface WizardLayoutProps {
 export default function BrandWizard() {
   const navigate = useNavigate();
   const { projectId } = useParams();
-  const [currentStep, setCurrentStep] = useState("api-setup");
+  const [currentStep, setCurrentStep] = useState("basics");
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA);
@@ -212,6 +211,9 @@ export default function BrandWizard() {
 
   // Access AI context
   const { 
+    geminiApiKey,
+    ideogramApiKey,
+    clipdropApiKey,
     selectedBrandName,
     selectedMissionStatement,
     selectedVisionStatement,
@@ -220,8 +222,18 @@ export default function BrandWizard() {
     selectedBrandVoice,
     selectedColorPalette,
     selectedLogo,
+    setSelectedLogo,
     resetGeneratedContent
   } = useAI();
+
+  // Check if API keys are set, if not redirect to settings
+  useEffect(() => {
+    if (!geminiApiKey || (!ideogramApiKey && !clipdropApiKey)) {
+      toast.error("API keys are required to use the brand wizard. Please set them in Settings.");
+      navigate("/settings");
+      return;
+    }
+  }, [geminiApiKey, ideogramApiKey, clipdropApiKey, navigate, toast]);
 
   // Load project data when component mounts
   useEffect(() => {
@@ -248,7 +260,7 @@ export default function BrandWizard() {
 
         // For new projects (completion_percentage = 0), set to first step
         if (project.completion_percentage === 0) {
-          setCurrentStep("api-setup");
+          setCurrentStep("basics");
           setIsLoading(false);
           return;
         }
@@ -365,16 +377,37 @@ export default function BrandWizard() {
                   break;
                 case 'logo':
                   try {
+                    // Verify this logo belongs to the current project
+                    if (asset.metadata && typeof asset.metadata === 'object' && 'projectId' in asset.metadata) {
+                      const assetProjectId = String(asset.metadata.projectId);
+                      
+                      if (assetProjectId !== projectId) {
+                        console.error(`Logo belongs to project ${assetProjectId}, not current project ${projectId}`);
+                        // Don't load this logo as it belongs to a different project
+                        break;
+                      }
+                    }
+                    
                     const logo = JSON.parse(content) as GeneratedLogo;
+                    console.log(`Successfully loaded logo for project ${projectId}:`, logo.url);
+                    
+                    // Store the logo in both the main form data and the AI generated section
                     setFormData(prev => ({
                       ...prev,
+                      logo: logo, // Store in main form data
                       aiGenerated: {
                         ...prev.aiGenerated,
-                        logo
+                        logo: logo // Store in AI generated section
                       }
                     }));
+                    
+                    // Set the logo step as valid
+                    setStepsValidity(prev => ({ ...prev, "logo": true }));
+                    
+                    // Also update the selected logo in the AI context
+                    setSelectedLogo(logo);
                   } catch (err) {
-                    console.error('Failed to parse logo:', err);
+                    console.error(`Failed to parse logo for project ${projectId}:`, err);
                     toast.error('Failed to load logo');
                   }
                   break;
@@ -398,16 +431,36 @@ export default function BrandWizard() {
     loadProjectData();
   }, [projectId, getProject, getStepData, getAsset, navigate]);
 
-  const updateFormData = useCallback((step: string, data: Partial<FormData>) => {
+  const updateFormData = useCallback(async (step: string, data: Partial<FormData>, forceSave: boolean = false) => {
+    // Update form data in state
     setFormData((prev) => ({
       ...prev,
       ...data
     }));
+    
     setStepsValidity(prev => ({
       ...prev,
       [step]: true
     }));
-  }, []);
+    
+    // Optionally immediately save to database (for aesthetic preferences that need to persist)
+    if (forceSave && projectId) {
+      console.log('Force saving step data for', step);
+      setIsSaving(true);
+      try {
+        // First get current form data
+        const currentFormData = { ...formData, ...data };
+        const { aiGenerated, ...stepData } = currentFormData;
+        await saveStepData(step as StepType, stepData);
+        console.log('Successfully force saved step data for', step);
+      } catch (error) {
+        console.error('Error force saving step data:', error);
+        toast.error('Failed to save preference changes');
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  }, [projectId, saveStepData, formData]);
 
   const handleNext = useCallback(async () => {
     if (!projectId) return;
@@ -415,7 +468,7 @@ export default function BrandWizard() {
     setIsSaving(true);
     try {
       // Save current step data
-      if (currentStep !== 'api-setup' && currentStep !== 'results') {
+      if (currentStep !== 'results') {
         // Create a clean step data object without AI generated content
         const { aiGenerated, ...stepData } = formData;
         
@@ -589,29 +642,40 @@ export default function BrandWizard() {
     if (!projectId) return;
 
     try {
-      await saveAsset('logo', JSON.stringify(logo));
+      // Add project ID to the metadata for proper filtering
+      const metadata = {
+        projectId: projectId,
+        timestamp: new Date().toISOString()
+      };
+      
+      console.log(`Saving logo for project ${projectId}:`, logo.url);
+      await saveAsset('logo', JSON.stringify(logo), metadata);
+      
+      // Update both the main form data and the AI generated section
       setFormData(prev => ({
         ...prev,
+        logo: logo, // Store in main form data
         aiGenerated: {
           ...prev.aiGenerated,
-          logo
+          logo: logo // Store in AI generated section
         }
       }));
+      
+      // Set the logo step as valid
+      setStepsValidity(prev => ({ ...prev, "logo": true }));
+      
       toast.success('Logo saved successfully');
     } catch (error) {
-      console.error('Error saving logo:', error);
+      console.error(`Error saving logo for project ${projectId}:`, error);
       toast.error('Failed to save logo');
     }
   }, [projectId, saveAsset]);
 
-  const handleAPISetupComplete = useCallback(() => {
-    setCurrentStep('basics');
-  }, []);
+
 
   const canProceed = useCallback(() => {
     switch (currentStep) {
-      case 'api-setup':
-        return true;
+
       case 'basics':
         return !!formData.industry && !!formData.businessName && !!formData.productService;
       case 'brand-name-generator':
@@ -642,8 +706,7 @@ export default function BrandWizard() {
     }
 
     switch (currentStep) {
-      case 'api-setup':
-        return <APIKeySetup onComplete={handleAPISetupComplete} />;
+
       case 'basics':
         return (
           <BusinessBasics
@@ -690,7 +753,7 @@ export default function BrandWizard() {
         return (
           <Aesthetics
             data={formData}
-            onChange={(data) => updateFormData('aesthetics', data)}
+            onChange={(data, forceSave = false) => updateFormData('aesthetics', data, forceSave)}
           />
         );
       case 'logo':
@@ -698,6 +761,9 @@ export default function BrandWizard() {
           <LogoGeneration
             data={formData}
             onChange={(data) => updateFormData('logo', data)}
+            getAsset={getAsset}
+            saveAsset={saveAsset}
+            projectId={projectId}
           />
         );
       case 'results':
@@ -705,7 +771,7 @@ export default function BrandWizard() {
       default:
         return null;
     }
-  }, [currentStep, formData, isLoading, handleAPISetupComplete, updateFormData]);
+  }, [currentStep, formData, isLoading, updateFormData]);
 
   return (
     <WizardLayout

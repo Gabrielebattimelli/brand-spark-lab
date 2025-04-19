@@ -2,16 +2,20 @@ import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Button } from "@/components/ui/button";
+import { ColorPaletteGenerator } from "@/components/ai/ColorPaletteGenerator";
+import { useParams } from "react-router-dom";
 import { X, Plus, Upload, ExternalLink, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { useAI } from "@/contexts/AIContext";
 import { generateColorPalettes, generateDefaultPalettes, ColorPaletteGenerationParams, GeneratedColorPalette } from "@/integrations/ai/colorPalette";
 import { toast } from "@/components/ui/use-toast";
 
+import { FormData } from '@/pages/projects/BrandWizard';
+
 interface AestheticsProps {
-  data: any;
-  onChange: (data: any) => void;
+  data: FormData;
+  onChange: (data: Partial<FormData>, forceSave?: boolean) => void;
 }
 
 const visualStyles = [
@@ -81,20 +85,33 @@ const colorOptions = [
 
 export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
   const { geminiApiKey } = useAI();
+  const { projectId } = useParams<{ projectId: string }>();
+  if (!projectId) {
+    console.error('Project ID is required in Aesthetics component');
+    return null;
+  }
   const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<Partial<FormData>>({
     visualStyle: data.visualStyle || "",
     colorPreferences: data.colorPreferences || [],
     inspirationKeywords: data.inspirationKeywords || [],
     moodboardUrls: data.moodboardUrls || [],
-    colorPalettes: data.colorPalettes || [],
+    aiGenerated: {
+      ...data.aiGenerated,
+      colorPalette: data.aiGenerated?.colorPalette || null
+    }
   });
+  
+  // Track whether preferences have been loaded from assets storage
+  const [prefLoadedFromAssets, setPrefLoadedFromAssets] = useState(false);
 
   const [newKeyword, setNewKeyword] = useState("");
   const [newMoodboardUrl, setNewMoodboardUrl] = useState("");
   const [newColor, setNewColor] = useState("");
   const [colorPalettes, setColorPalettes] = useState<GeneratedColorPalette[]>([]);
   const [isGeneratingPalettes, setIsGeneratingPalettes] = useState(false);
+  const [lastGenerationTime, setLastGenerationTime] = useState<number>(0);
+  const [debounceTimeout, setDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
 
   // Get the selected visual style
   const selectedStyle = visualStyles.find(style => style.id === formData.visualStyle);
@@ -111,22 +128,46 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
       return;
     }
 
+    // Check if we should debounce
+    const now = Date.now();
+    const timeSinceLastGeneration = now - lastGenerationTime;
+    const debounceDelay = 5000; // 5 seconds
+
+    if (timeSinceLastGeneration < debounceDelay) {
+      if (debounceTimeout) {
+        clearTimeout(debounceTimeout);
+      }
+      setDebounceTimeout(
+        setTimeout(() => {
+          regeneratePalettes();
+        }, debounceDelay - timeSinceLastGeneration)
+      );
+      return;
+    }
+
     try {
       setIsGeneratingPalettes(true);
       setError(null);
+      setLastGenerationTime(now);
 
       const params: ColorPaletteGenerationParams = {
         brandName: data.businessName?.trim() || "Brand",
         industry: data.industry?.trim() || "General",
-        brandPersonality: data.brandPersonality?.trim() || formData.visualStyle,
+        brandPersonality: formData.visualStyle,
         aestheticPreferences: [formData.visualStyle, ...(formData.inspirationKeywords || [])],
-        colorPreferences: formData.colorPreferences || [],
+        colorPreferences: formData.colorPreferences || []
       };
 
       let palettes: GeneratedColorPalette[];
       try {
         if (geminiApiKey && geminiApiKey.trim()) {
-          palettes = await generateColorPalettes(geminiApiKey, params, 3);
+          palettes = await generateColorPalettes(
+            geminiApiKey,
+            params,
+            3,
+            3, // max retries
+            2000 // initial delay
+          );
         } else {
           console.warn("No Gemini API key found, using default palettes");
           palettes = generateDefaultPalettes(3, params);
@@ -151,6 +192,10 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
       const updatedData = {
         ...formData,
         colorPalettes: palettes,
+        aiGenerated: {
+          ...formData.aiGenerated,
+          colorPalette: palettes[0] || null
+        }
       };
       setFormData(updatedData);
       onChange(updatedData);
@@ -173,12 +218,19 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
     }
   };
 
-  // Generate color palettes when visual style or color preferences change
+  // Cleanup debounce timeout on unmount
   useEffect(() => {
-    if (formData.visualStyle) {
-      regeneratePalettes();
-    }
-  }, [formData.visualStyle, formData.colorPreferences.length]);
+    return () => {
+      if (debounceTimeout) {
+        clearTimeout(debounceTimeout);
+      }
+    };
+  }, [debounceTimeout]);
+
+  // Only generate palettes when the button is clicked
+  const handleGeneratePalettes = () => {
+    regeneratePalettes();
+  };
 
   const handleVisualStyleChange = (value: string) => {
     const updatedData = {
@@ -417,28 +469,25 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
               )}
 
               <div className="mt-6">
-                <Button 
-                  onClick={regeneratePalettes} 
-                  disabled={isGeneratingPalettes || !formData.visualStyle}
-                  className="w-full"
-                >
-                  {isGeneratingPalettes ? (
-                    <>
-                      <RefreshCw size={16} className="mr-2 animate-spin" />
-                      Generating...
-                    </>
-                  ) : colorPalettes.length > 0 ? (
-                    <>
-                      <RefreshCw size={16} className="mr-2" />
-                      Regenerate Color Palettes
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw size={16} className="mr-2" />
-                      Generate Color Palettes
-                    </>
-                  )}
-                </Button>
+                <CardFooter>
+                  <Button
+                    onClick={handleGeneratePalettes}
+                    disabled={isGeneratingPalettes}
+                    className="w-full"
+                  >
+                    {isGeneratingPalettes ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Generate New Palettes
+                      </>
+                    )}
+                  </Button>
+                </CardFooter>
               </div>
             </div>
 
@@ -448,77 +497,47 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
               <p className="text-gray-600 mb-4">
                 Based on your visual style and color preferences, here are some AI-generated color palettes for your brand.
               </p>
-
-              {isGeneratingPalettes ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="flex items-center gap-2">
-                    <RefreshCw size={20} className="animate-spin text-primary" />
-                    <span>Generating color palettes...</span>
-                  </div>
-                </div>
-              ) : colorPalettes.length > 0 ? (
-                <div className="space-y-4">
-                  {colorPalettes.map((palette, index) => (
-                    <Card key={palette.id} className={`overflow-hidden ${palette.selected ? 'ring-2 ring-primary' : ''}`}>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-lg">Palette {index + 1}</CardTitle>
-                        <CardDescription>
-                          {palette.selected ? 'Selected palette' : 'Click to select'}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="pb-3">
-                        <div className="space-y-3">
-                          {palette.colors.map((color) => (
-                            <div key={color.name} className="flex items-center gap-2">
-                              <div 
-                                className="w-10 h-10 rounded-md border border-gray-200 flex-shrink-0" 
-                                style={{ backgroundColor: color.hex }}
-                              />
-                              <div>
-                                <div className="font-medium text-sm">{color.name}</div>
-                                <div className="text-xs text-gray-500">{color.hex}</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                      <CardFooter className="pt-0">
-                        <Button 
-                          variant={palette.selected ? "outline" : "default"}
-                          size="sm"
-                          className="w-full"
-                          onClick={() => {
-                            // Update selected palette
-                            const updatedPalettes = colorPalettes.map(p => ({
-                              ...p,
-                              selected: p.id === palette.id
-                            }));
-                            setColorPalettes(updatedPalettes);
-
-                            // Update formData
-                            const updatedData = {
-                              ...formData,
-                              colorPalettes: updatedPalettes,
-                            };
-                            setFormData(updatedData);
-                            onChange(updatedData);
-                          }}
-                        >
-                          {palette.selected ? 'Selected' : 'Select Palette'}
-                        </Button>
-                      </CardFooter>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 border rounded-lg bg-gray-50">
-                  <p className="text-gray-500">
-                    {formData.visualStyle ? 
-                      "Click the Generate button to create color palettes based on your preferences." : 
-                      "Select a visual style and color preferences to generate color palettes."}
-                  </p>
-                </div>
-              )}
+              
+              <ColorPaletteGenerator
+                brandName={data.businessName || data.brandName || "Brand"}
+                industry={data.industry || "General"}
+                brandPersonality={formData.visualStyle || "modern"}
+                onSelect={(palette) => {
+                  // Update formData with the selected palette
+                  const updatedData = {
+                    ...formData,
+                    aiGenerated: {
+                      ...formData.aiGenerated,
+                      colorPalette: palette
+                    }
+                  };
+                  setFormData(updatedData);
+                  onChange(updatedData);
+                }}
+                onPreferencesChange={(aestheticPreferences, colorPrefs) => {
+                  // Update formData with the new preferences
+                  const updatedData = {
+                    ...formData,
+                    // Update wizard's color preferences from the component
+                    colorPreferences: colorPrefs,
+                    // Save aesthetic preferences as inspiration keywords
+                    inspirationKeywords: aestheticPreferences
+                  };
+                  console.log('Preferences changed, updating wizard data:', updatedData);
+                  setFormData(updatedData);
+                  
+                  // Force an immediate save when preferences are loaded from assets
+                  if (!prefLoadedFromAssets) {
+                    console.log('First load from assets, forcing immediate save to project data');
+                    setPrefLoadedFromAssets(true);
+                    // Use forceSave=true to immediately persist to database
+                    onChange(updatedData, true);
+                  } else {
+                    // Normal update during user interaction
+                    onChange(updatedData);
+                  }
+                }}
+              />
             </div>
           </div>
         </div>

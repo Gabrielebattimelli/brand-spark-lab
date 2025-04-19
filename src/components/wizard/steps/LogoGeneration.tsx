@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAI } from "@/contexts/AIContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,9 +48,12 @@ interface LogoGenerationData {
 interface LogoGenerationProps {
   data: LogoGenerationData;
   onChange: (data: Partial<LogoGenerationData>) => void;
+  getAsset?: (type: string) => Promise<any>;
+  saveAsset?: (type: string, content: string, metadata?: any) => Promise<any>;
+  projectId?: string;
 }
 
-export const LogoGeneration = ({ data, onChange }: LogoGenerationProps) => {
+export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId }: LogoGenerationProps) => {
   const { 
     ideogramApiKey,
     clipdropApiKey,
@@ -65,6 +68,63 @@ export const LogoGeneration = ({ data, onChange }: LogoGenerationProps) => {
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
+  
+  // Initialize with previously saved logo data
+  useEffect(() => {
+    // First check if we have logos in the AI context
+    if (generatedLogos && generatedLogos.length > 0) {
+      console.log('Found logos in AI context:', generatedLogos.length);
+      console.log('AI context logos:', generatedLogos);
+      if (!selectedLogo) {
+        console.log('Setting first logo as selected');
+        setSelectedLogo(generatedLogos[0]);
+      }
+      return;
+    }
+
+    // If no logos in AI context, check project data
+    const savedLogo = data.logo || data.aiGenerated?.logo;
+    
+    if (savedLogo) {
+      console.log('Found saved logo in project data:', savedLogo.url);
+      console.log('Project data logo:', savedLogo);
+      
+      // Convert base64 to blob URL if needed
+      const logoWithBlobUrl = {
+        ...savedLogo,
+        url: savedLogo.url
+      };
+
+      // Initialize the generated logos with the saved logo
+      setGeneratedLogos([logoWithBlobUrl]);
+      setSelectedLogo(logoWithBlobUrl);
+    }
+
+    // If no logo in project data, check generated assets
+    if (!savedLogo && getAsset) {
+      const getLogoAsset = async () => {
+        try {
+          const asset = await getAsset('logo');
+          if (asset && asset.content) {
+            const logo = JSON.parse(asset.content) as GeneratedLogo;
+            console.log('Found logo in generated assets:', logo.url);
+            
+            // Initialize the generated logos with the saved logo
+            setGeneratedLogos([logo]);
+            setSelectedLogo(logo);
+          }
+        } catch (error) {
+          console.error('Error loading logo from generated assets:', error);
+        }
+      };
+      getLogoAsset();
+    }
+
+    if (!savedLogo) {
+      console.log('No saved logo found in project data');
+      console.log('Project data:', data);
+    }
+  }, [data, generatedLogos, selectedLogo, setGeneratedLogos, setSelectedLogo, getAsset]);
 
   const handleGenerateLogos = async () => {
     if (!ideogramApiKey && !clipdropApiKey) {
@@ -99,12 +159,42 @@ export const LogoGeneration = ({ data, onChange }: LogoGenerationProps) => {
         throw new Error("No logos were generated");
       }
 
+      // Update both AI context and project data
+      console.log('Saving logo to AI context:', logos[0]);
       setGeneratedLogos(logos);
+      setSelectedLogo(logos[0]);
+      onChange({ logo: logos[0] });
 
-      // If no logo is selected yet, select the first one
-      if (!selectedLogo && logos.length > 0) {
-        setSelectedLogo(logos[0]);
-        onChange({ logo: logos[0] });
+      // Save to project data
+      if (typeof onChange === 'function') {
+        console.log('Saving logo to project data:', logos[0]);
+        onChange({
+          aiGenerated: {
+            ...data.aiGenerated,
+            logo: logos[0]
+          }
+        });
+      }
+
+      // Save to generated assets
+      if (typeof saveAsset === 'function') {
+        try {
+          const logoData = {
+            url: logos[0].url,
+            prompt: logos[0].prompt
+          };
+          await saveAsset('logo', JSON.stringify(logoData), {
+            projectId: projectId
+          });
+          console.log('Successfully saved logo to generated assets');
+        } catch (error) {
+          console.error('Error saving logo to generated assets:', error);
+          toast({
+            title: "Warning",
+            description: "Failed to save logo to generated assets. It will still be available in this session.",
+            variant: "destructive"
+          });
+        }
       }
 
       toast({
@@ -158,10 +248,23 @@ export const LogoGeneration = ({ data, onChange }: LogoGenerationProps) => {
         throw new Error("No logos were generated");
       }
 
+      // Update both AI context and project data
+      console.log('Saving logo to AI context:', logos[0]);
       setGeneratedLogos(logos);
       setSelectedLogo(logos[0]);
       onChange({ logo: logos[0] });
       setFeedback("");
+
+      // Save to project data
+      if (typeof onChange === 'function') {
+        console.log('Saving logo to project data:', logos[0]);
+        onChange({
+          aiGenerated: {
+            ...data.aiGenerated,
+            logo: logos[0]
+          }
+        });
+      }
 
       toast({
         title: "Logos Regenerated",
@@ -182,6 +285,12 @@ export const LogoGeneration = ({ data, onChange }: LogoGenerationProps) => {
     }
   };
 
+  // Helper function to convert base64 to blob URL
+  const convertBase64ToBlob = async (base64Url: string): Promise<string> => {
+    const blob = await (await fetch(base64Url)).blob();
+    return URL.createObjectURL(blob);
+  };
+
   const handleSelectLogo = (logo: GeneratedLogo) => {
     setSelectedLogo(logo);
     onChange({ 
@@ -191,6 +300,21 @@ export const LogoGeneration = ({ data, onChange }: LogoGenerationProps) => {
         logo
       }
     });
+
+    // Save to generated assets when a logo is selected
+    if (typeof saveAsset === 'function' && projectId) {
+      try {
+        const logoData = {
+          url: logo.url,
+          prompt: logo.prompt
+        };
+        saveAsset('logo', JSON.stringify(logoData), {
+          projectId: projectId
+        });
+      } catch (error) {
+        console.error('Error saving selected logo to generated assets:', error);
+      }
+    }
   };
 
   return (
@@ -245,22 +369,37 @@ export const LogoGeneration = ({ data, onChange }: LogoGenerationProps) => {
           ) : (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {generatedLogos.map((logo) => (
+                {generatedLogos.map((logo, index) => (
                   <div
-                    key={logo.id}
+                    key={logo.url || `logo-${index}`}
                     className={`
                       relative border rounded-lg overflow-hidden cursor-pointer transition-all
-                      ${selectedLogo?.id === logo.id ? "ring-2 ring-primary" : "hover:border-primary/50"}
+                      ${selectedLogo?.url === logo.url ? "ring-2 ring-primary" : "hover:border-primary/50"}
                     `}
                     onClick={() => handleSelectLogo(logo)}
                   >
                     <img
                       src={logo.url}
-                      alt={`Logo concept ${logo.id}`}
+                      alt={`Logo concept ${index + 1}`}
                       className="w-full h-auto"
+                      onError={(e) => {
+                        // Try to convert base64 to blob URL if needed
+                        if (logo.url.startsWith('data:')) {
+                          try {
+                            const blob = new Blob([atob(logo.url.split(',')[1])], { type: 'image/png' });
+                            const url = URL.createObjectURL(blob);
+                            e.currentTarget.src = url;
+                          } catch (error) {
+                            console.error('Failed to convert base64 to blob:', error);
+                            e.currentTarget.src = '/placeholder-logo.svg';
+                          }
+                        } else {
+                          e.currentTarget.src = '/placeholder-logo.svg';
+                        }
+                      }}
                     />
                     <div className="absolute top-2 right-2">
-                      {selectedLogo?.id === logo.id && (
+                      {selectedLogo?.url === logo.url && (
                         <div className="bg-primary text-white rounded-full p-1">
                           <CheckCircle size={16} />
                         </div>

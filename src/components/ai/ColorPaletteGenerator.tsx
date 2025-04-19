@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAI } from "@/contexts/AIContext";
+import { useParams } from "react-router-dom";
+import { useColorPaletteStorage } from "@/hooks/use-color-palette-storage";
 import { 
   generateColorPalettes,
   regenerateColorPalettes,
@@ -14,11 +16,12 @@ import { Label } from "@/components/ui/label";
 import { Sparkles, RefreshCw, CheckCircle, AlertCircle, Download } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 
-interface ColorPaletteGeneratorProps {
+export interface ColorPaletteGeneratorProps {
   brandName: string;
   industry: string;
   brandPersonality: string;
   onSelect: (palette: GeneratedColorPalette) => void;
+  onPreferencesChange?: (aestheticPreferences: string[], colorPreferences: string[]) => void;
 }
 
 export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
@@ -26,7 +29,9 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
   industry,
   brandPersonality,
   onSelect,
+  onPreferencesChange,
 }) => {
+  const { projectId } = useParams<{ projectId?: string }>(); // Get the current project ID from the URL
   const { 
     geminiApiKey,
     generatedColorPalettes, 
@@ -42,7 +47,74 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
   const [aestheticPreferences, setAestheticPreferences] = useState<string[]>([]);
   const [colorPreferences, setColorPreferences] = useState<string[]>([]);
   const [customPreference, setCustomPreference] = useState<string>("");
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [initialGenerationDone, setInitialGenerationDone] = useState(false);
+  
+  // Use our color palette storage hook
+  const { loadColorPalettes, saveColorPalettes, saveSelectedPalette, savePreferences, loadPreferences } = useColorPaletteStorage(projectId);
 
+  // Initial load of color palettes and preferences from the database
+  useEffect(() => {
+    if (!initialLoadComplete && projectId) {
+      console.log('Loading color palettes and preferences from Supabase for project:', projectId);
+      
+      const fetchData = async () => {
+        try {
+          // Load color palettes
+          const { colorPalettes, selectedPalette } = await loadColorPalettes();
+          
+          if (colorPalettes.length > 0) {
+            console.log('Found stored color palettes:', colorPalettes);
+            setGeneratedColorPalettes(colorPalettes);
+            setInitialGenerationDone(true);
+            
+            if (selectedPalette) {
+              console.log('Found selected color palette:', selectedPalette);
+              setSelectedColorPalette(selectedPalette);
+              onSelect(selectedPalette);
+            }
+          }
+          
+          // Load preferences
+          const preferences = await loadPreferences();
+          if (preferences) {
+            console.log('Found stored preferences:', preferences);
+            const loadedAestheticPrefs = preferences.aestheticPreferences || [];
+            const loadedColorPrefs = preferences.colorPreferences || [];
+            
+            // Update local state
+            setAestheticPreferences(loadedAestheticPrefs);
+            setColorPreferences(loadedColorPrefs);
+            if (preferences.customPreference) {
+              setCustomPreference(preferences.customPreference);
+            }
+            
+            // Notify parent component about loaded preferences
+            if (onPreferencesChange) {
+              console.log('Notifying parent about loaded preferences:', loadedAestheticPrefs, loadedColorPrefs);
+              onPreferencesChange(loadedAestheticPrefs, loadedColorPrefs);
+            }
+          }
+        } catch (err) {
+          console.error('Error loading data from database:', err);
+        } finally {
+          setInitialLoadComplete(true);
+        }
+      };
+      
+      fetchData();
+    }
+  }, [projectId, initialLoadComplete, loadColorPalettes, loadPreferences, setGeneratedColorPalettes, setSelectedColorPalette, onSelect]);
+
+  // Only automatically generate palettes if none were loaded from storage and we haven't generated any yet
+  useEffect(() => {
+    if (initialLoadComplete && !initialGenerationDone && generatedColorPalettes.length === 0 && 
+        brandName && industry && !isGeneratingPalettes) {
+      console.log('No stored palettes found, generating initial palettes');
+      handleGeneratePalettes();
+    }
+  }, [initialLoadComplete, initialGenerationDone, generatedColorPalettes, brandName, industry, isGeneratingPalettes]);
+  
   const handleGeneratePalettes = async () => {
     // Check if the required API key is available
     if (!geminiApiKey || geminiApiKey.trim() === "") {
@@ -100,6 +172,18 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
       }
 
       setGeneratedColorPalettes(palettes);
+      setInitialGenerationDone(true);
+
+      // Save to Supabase
+      if (projectId) {
+        console.log('Saving color palettes and preferences to Supabase');
+        const preferences = {
+          aestheticPreferences,
+          colorPreferences,
+          customPreference
+        };
+        await saveColorPalettes(palettes, palettes[0], preferences);
+      }
 
       // If no palette is selected yet, select the first one
       if (!selectedColorPalette && palettes.length > 0) {
@@ -167,6 +251,17 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
       setSelectedColorPalette(palettes[0]);
       onSelect(palettes[0]);
       setFeedback(""); // Clear feedback after successful regeneration
+      
+      // Save to Supabase
+      if (projectId) {
+        console.log('Saving regenerated color palettes and preferences to Supabase');
+        const preferences = {
+          aestheticPreferences,
+          colorPreferences,
+          customPreference
+        };
+        await saveColorPalettes(palettes, palettes[0], preferences);
+      }
 
       toast({
         title: "Palettes Regenerated",
@@ -196,12 +291,36 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
     setGeneratedColorPalettes(updatedPalettes);
     setSelectedColorPalette(palette);
     onSelect(palette);
+    
+    // Save the selected palette to Supabase
+    if (projectId) {
+      console.log('Saving selected color palette to Supabase:', palette);
+      saveSelectedPalette(palette);
+      saveColorPalettes(updatedPalettes, palette);
+    }
   };
 
   const handleAddPreference = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && customPreference.trim()) {
-      setAestheticPreferences([...aestheticPreferences, customPreference.trim()]);
+    if (e.key === "Enter" && customPreference.trim()) {
+      const updatedPreferences = [...aestheticPreferences, customPreference.trim()];
+      setAestheticPreferences(updatedPreferences);
       setCustomPreference("");
+      
+      // Save updated preferences
+      if (projectId) {
+        console.log('Saving updated aesthetic preferences');
+        savePreferences({
+          aestheticPreferences: updatedPreferences,
+          colorPreferences,
+          customPreference: ""
+        });
+      }
+      
+      // Update parent component's form data
+      if (onPreferencesChange) {
+        onPreferencesChange(updatedPreferences, colorPreferences);
+      }
+      
       e.preventDefault();
     }
   };
@@ -209,18 +328,67 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
   const handleAddColorPreference = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && customPreference.trim()) {
       // Check if the input is a valid color (hex, rgb, or color name)
-      setColorPreferences([...colorPreferences, customPreference.trim()]);
+      const updatedColorPreferences = [...colorPreferences, customPreference.trim()];
+      setColorPreferences(updatedColorPreferences);
       setCustomPreference("");
+      
+      // Save updated preferences
+      if (projectId) {
+        console.log('Saving updated color preferences after adding new color');
+        savePreferences({
+          aestheticPreferences,
+          colorPreferences: updatedColorPreferences,
+          customPreference: ""
+        });
+      }
+      
+      // Update parent component's form data
+      if (onPreferencesChange) {
+        onPreferencesChange(aestheticPreferences, updatedColorPreferences);
+      }
+      
       e.preventDefault();
     }
   };
 
   const handleRemovePreference = (preference: string) => {
-    setAestheticPreferences(aestheticPreferences.filter(p => p !== preference));
+    const updatedPreferences = aestheticPreferences.filter(p => p !== preference);
+    setAestheticPreferences(updatedPreferences);
+    
+    // Save updated preferences
+    if (projectId) {
+      console.log('Saving updated aesthetic preferences after delete');
+      savePreferences({
+        aestheticPreferences: updatedPreferences,
+        colorPreferences,
+        customPreference
+      });
+    }
+    
+    // Update parent component's form data
+    if (onPreferencesChange) {
+      onPreferencesChange(updatedPreferences, colorPreferences);
+    }
   };
 
   const handleRemoveColorPreference = (color: string) => {
-    setColorPreferences(colorPreferences.filter(c => c !== color));
+    const updatedColorPreferences = colorPreferences.filter(c => c !== color);
+    setColorPreferences(updatedColorPreferences);
+    
+    // Save updated preferences
+    if (projectId) {
+      console.log('Saving updated color preferences');
+      savePreferences({
+        aestheticPreferences,
+        colorPreferences: updatedColorPreferences,
+        customPreference
+      });
+    }
+    
+    // Update parent component's form data
+    if (onPreferencesChange) {
+      onPreferencesChange(aestheticPreferences, updatedColorPreferences);
+    }
   };
 
   return (

@@ -33,7 +33,6 @@ export const WizardLayout = ({
 
   // These steps would typically come from a context or prop
   const [steps] = useState<WizardStep[]>([
-    { id: "api-setup", title: "API Setup", completed: false },
     { id: "basics", title: "Business Basics", completed: false },
     { id: "brand-name-generator", title: "Brand Name Generator", completed: false },
     { id: "audience", title: "Target Audience", completed: false },

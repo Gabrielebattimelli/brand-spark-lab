@@ -203,6 +203,7 @@ export const useProjectData = (projectId?: string) => {
 
   const updateProjectProgress = useCallback(async (projectId: string): Promise<void> => {
     try {
+      console.log(`[updateProjectProgress] Starting for projectId: ${projectId}`);
       // Get all steps for this project
       const { data: steps, error } = await supabase
         .from('project_data')
@@ -210,16 +211,21 @@ export const useProjectData = (projectId?: string) => {
         .eq('project_id', projectId);
 
       if (error) {
+        console.error('[updateProjectProgress] Error fetching project_data:', error);
         toast.error(error.message);
         throw new Error(error.message);
       }
+
+      console.log('[updateProjectProgress] Fetched project_data steps:', steps);
 
       // Calculate completion percentage based on valid steps
       const validSteps = steps?.filter(step => 
         step.step !== 'results' && validateStepData(step.step as StepType, step.data)
       ) || [];
 
+      console.log('[updateProjectProgress] Valid steps:', validSteps);
       const percentage = Math.round((validSteps.length / STEPS.length) * 100);
+      console.log(`[updateProjectProgress] Calculated percentage: ${percentage}`);
 
       // Determine status
       let status: 'draft' | 'in-progress' | 'completed' = 'draft';
@@ -228,8 +234,10 @@ export const useProjectData = (projectId?: string) => {
       } else if (percentage > 0) {
         status = 'in-progress';
       }
+      console.log(`[updateProjectProgress] Determined status: ${status}`);
 
       // Update project
+      console.log('[updateProjectProgress] Attempting to update projects table...');
       const { error: updateError } = await supabase
         .from('projects')
         .update({
@@ -240,12 +248,16 @@ export const useProjectData = (projectId?: string) => {
         .eq('id', projectId);
 
       if (updateError) {
+        console.error('[updateProjectProgress] Error updating projects table:', updateError);
         toast.error(updateError.message);
         throw new Error(updateError.message);
       }
+      console.log('[updateProjectProgress] Successfully updated projects table.');
     } catch (err) {
-      console.error('Failed to update project progress:', err);
-      toast.error('Failed to update project progress');
+      // Log the error caught by the outer try-catch
+      console.error('[updateProjectProgress] Caught error:', err);
+      // Toast remains generic, but console has details
+      toast.error('Failed to update project progress (see console for details)'); 
     }
   }, []);
 
