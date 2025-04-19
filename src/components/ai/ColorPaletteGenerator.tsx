@@ -568,7 +568,6 @@ export const ColorPaletteGenerator: React.FC<ColorPaletteGeneratorProps> = ({
               </Button></div>
             )}
           </div>
-          )}
       </CardContent>
       <CardFooter className="flex justify-between">
         {selectedColorPalette && (

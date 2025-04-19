@@ -283,7 +283,7 @@ export default function BrandWizard() {
               }));
             }
           } catch (error) {
-            console.error(`Error loading step ${step}:`, error);
+            // Silent error with toast
             toast.error(`Failed to load ${step} data`);
           }
         });
@@ -297,7 +297,8 @@ export default function BrandWizard() {
           'brand_essence', 
           'brand_voice', 
           'color_palette', 
-          'logo'
+          'logo',
+          'logos' // Add the 'logos' asset (plural) which contains all generated logos
         ];
 
         const assetPromises = assetTypes.map(async (type) => {
@@ -373,10 +374,65 @@ export default function BrandWizard() {
                     }));
                     setStepsValidity(prev => ({ ...prev, "aesthetics": true }));
                   } catch (err) {
-                    console.error('Failed to parse color palette:', err);
+                    // Silent error with toast
                     toast.error('Failed to load color palette');
                   }
                   break;
+                case 'logos':
+                  try {
+                    // Verify this logos asset belongs to the current project
+                    if (asset.metadata && typeof asset.metadata === 'object' && 'projectId' in asset.metadata) {
+                      const assetProjectId = String(asset.metadata.projectId);
+                      
+                      if (assetProjectId !== projectId) {
+                        // Don't load these logos as they belong to a different project
+                        break;
+                      }
+                    }
+                    
+                    const allLogosContent = JSON.parse(content);
+                    
+                    if (allLogosContent && allLogosContent.logos && Array.isArray(allLogosContent.logos) && allLogosContent.logos.length > 0) {
+                      // Ensure each logo has a unique ID
+                      const uniqueLogos = allLogosContent.logos.filter((logo, index, self) => 
+                        index === self.findIndex(l => l.id === logo.id)
+                      );
+                      
+                      // Find the selected logo
+                      const selectedLogoId = allLogosContent.selectedLogoId;
+                      const selectedLogoFromAssets = uniqueLogos.find(logo => logo.id === selectedLogoId) || uniqueLogos[0];
+                      
+                      // Initialize the generated logos with all saved logos
+                      setGeneratedLogos(uniqueLogos);
+                      
+                      // Set the selected logo
+                      if (selectedLogoFromAssets) {
+                        setSelectedLogo(selectedLogoFromAssets);
+                        
+                        // Store the selected logo in the form data
+                        setFormData(prev => ({
+                          ...prev,
+                          logo: selectedLogoFromAssets, // Store in main form data
+                          aiGenerated: {
+                            ...prev.aiGenerated,
+                            logo: selectedLogoFromAssets // Also store in aiGenerated
+                          }
+                        }));
+                        setStepsValidity(prev => ({ ...prev, "logo": true }));
+                      }
+                      
+                      // Show success toast
+                      toast({
+                        title: "Logos Loaded",
+                        description: `Successfully loaded ${uniqueLogos.length} logo concepts.`,
+                      });
+                    }
+                  } catch (err) {
+                    // Silent error with toast
+                    toast.error('Failed to load logos');
+                  }
+                  break;
+                  
                 case 'logo':
                   try {
                     // Verify this logo belongs to the current project
@@ -384,39 +440,44 @@ export default function BrandWizard() {
                       const assetProjectId = String(asset.metadata.projectId);
                       
                       if (assetProjectId !== projectId) {
-                        console.error(`Logo belongs to project ${assetProjectId}, not current project ${projectId}`);
                         // Don't load this logo as it belongs to a different project
                         break;
                       }
                     }
                     
                     const logo = JSON.parse(content) as GeneratedLogo;
-                    console.log(`Successfully loaded logo for project ${projectId}:`, logo.url);
+                    // Logo loaded successfully
                     
-                    // Store the logo in both the main form data
-                    setFormData(prev => ({
-                      ...prev,
-                      logo: logo, // Store in main form data
-                      aiGenerated: {
-                        ...prev.aiGenerated,
-                        logo: logo // Store in AI generated section
-                      }
-                    }));
-                    
-                    // Set the logo step as valid
-                    setStepsValidity(prev => ({ ...prev, "logo": true }));
-                    
-                    // Also update the selected logo in the AI context
-                    setSelectedLogo(logo);
+                    // Only use this logo if we haven't already loaded logos from the 'logos' asset
+                    if (generatedLogos.length === 0) {
+                      // Store the logo in both the main form data
+                      setFormData(prev => ({
+                        ...prev,
+                        logo: logo, // Store in main form data
+                        aiGenerated: {
+                          ...prev.aiGenerated,
+                          logo: logo // Store in AI generated section
+                        }
+                      }));
+                      
+                      // Set the logo step as valid
+                      setStepsValidity(prev => ({ ...prev, "logo": true }));
+                      
+                      // Also update the selected logo in the AI context
+                      setSelectedLogo(logo);
+                      
+                      // Add this logo to the generatedLogos array
+                      setGeneratedLogos([logo]);
+                    }
                   } catch (err) {
-                    console.error(`Failed to parse logo for project ${projectId}:`, err);
+                    // Silent error with toast
                     toast.error('Failed to load logo');
                   }
                   break;
               }
             }
           } catch (error) {
-            console.error(`Error loading asset ${type}:`, error);
+            // Silent error with toast
             toast.error(`Failed to load ${type}`);
           }
         });

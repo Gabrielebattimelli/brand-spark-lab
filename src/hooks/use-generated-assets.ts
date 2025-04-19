@@ -19,9 +19,19 @@ const ASSET_VALIDATORS: Record<AssetType, (content: string) => boolean> = {
   logo: (content) => {
     try {
       const data = JSON.parse(content);
-      return typeof data === 'object' && 
-             typeof data.url === 'string' && 
-             typeof data.prompt === 'string';
+      // Basic validation for a single logo
+      if (typeof data === 'object' && typeof data.url === 'string') {
+        return true;
+      }
+      
+      // Check if this is a collection of logos
+      if (data.logos && Array.isArray(data.logos)) {
+        return data.logos.every(logo => 
+          typeof logo === 'object' && typeof logo.url === 'string'
+        );
+      }
+      
+      return false;
     } catch {
       return false;
     }
@@ -96,7 +106,6 @@ export const useGeneratedAssets = (projectId?: string) => {
   const validateAsset = (type: AssetType, content: string): boolean => {
     const validator = ASSET_VALIDATORS[type];
     if (!validator) {
-      console.error(`No validator found for asset type: ${type}`);
       return false;
     }
     return validator(content);
@@ -150,9 +159,7 @@ export const useGeneratedAssets = (projectId?: string) => {
         }))
         .filter(asset => validateAsset(asset.type, asset.content));
 
-      if (validAssets.length !== (data?.length || 0)) {
-        console.warn('Some assets failed validation and were filtered out');
-      }
+      // Silently filter out invalid assets
 
       return validAssets;
     } catch (err) {
@@ -214,7 +221,6 @@ export const useGeneratedAssets = (projectId?: string) => {
       };
 
       if (!validateAsset(typedData.type, typedData.content)) {
-        console.warn(`Invalid asset content for type: ${type}`);
         return null;
       }
 

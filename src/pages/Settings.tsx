@@ -50,7 +50,6 @@ export default function Settings() {
   
   // Update local key state when context values change
   useEffect(() => {
-    console.log('API keys from context updated', { geminiApiKey, ideogramApiKey, clipdropApiKey });
     setLocalGeminiKey(geminiApiKey || "");
     setLocalIdeogramKey(ideogramApiKey || "");
     setLocalClipdropKey(clipdropApiKey || "");

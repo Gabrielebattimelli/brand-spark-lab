@@ -1,13 +1,15 @@
 // src/integrations/ai/moodboard.ts
 
 interface MoodboardGenerationParams {
+  brandName?: string;
+  industry?: string;
   visualStyle: string;
   colorPreferences: string[];
   inspirationKeywords: string[];
 }
 
 // Placeholder for the actual LLM call function
-async function callLLM(prompt: string): Promise<any> {
+async function callLLM(apiKey: string, prompt: string): Promise<any> {
   // In a real implementation, this would send the prompt to the LLM
   // and return the result. For now, we'll just return a dummy result.
   console.log(`LLM call with prompt: ${prompt}`);
@@ -15,14 +17,17 @@ async function callLLM(prompt: string): Promise<any> {
 }
 
 export async function generateMoodboardPrompts(
+  apiKey: string,
   params: MoodboardGenerationParams
 ): Promise<string[]> {
-  const { visualStyle, colorPreferences, inspirationKeywords } = params;
+  const { brandName, industry, visualStyle, colorPreferences, inspirationKeywords } = params;
 
   const prompt = `Generate four coherent and distinct prompts for image generation, 
   capturing the essence of a brand with the following characteristics:
   
-  Visual Style: ${visualStyle}
+  Brand Name: ${brandName || "Brand"}
+  Industry: ${industry || "General"}
+  Visual Style: ${visualStyle || "modern"}
   Color Preferences: ${(colorPreferences ?? []).join(", ") || "Not specified"}
   Inspiration Keywords: ${(inspirationKeywords ?? []).join(", ") || "Not specified"}
   
@@ -30,7 +35,7 @@ export async function generateMoodboardPrompts(
   The prompts should be detailed and evocative, suitable for generating high-quality images.`;
 
   try {
-    const prompts = await callLLM(prompt);
+    const prompts = await callLLM(apiKey, prompt);
     if (Array.isArray(prompts) && prompts.length === 4) {
       return prompts;
     } else {
@@ -55,11 +60,17 @@ export async function generateMoodboardPrompts(
   }
 }
 
-export async function generateImages(prompts: string[]): Promise<string[]> {
+export async function generateImages(apiKey: string, prompts: string[]): Promise<string[]> {
   try {
+    if (!Array.isArray(prompts)) {
+      console.error("Prompts is not an array:", prompts);
+      throw new TypeError("prompts.map is not a function");
+    }
+    
     const imageResults = await Promise.all(
       prompts.map(async (prompt) => {
         const result = await callLLM(
+          apiKey,
           `Generate an image based on the following prompt: "${prompt}"`
         );
         // Assuming the LLM returns a single result for each image prompt
@@ -71,10 +82,10 @@ export async function generateImages(prompts: string[]): Promise<string[]> {
     console.error("Error generating images:", error);
     // Return placeholder image URLs or data in case of an error
     return [
-      "placeholder_image_1.jpg",
-      "placeholder_image_2.jpg",
-      "placeholder_image_3.jpg",
-      "placeholder_image_4.jpg",
+      "https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+1",
+      "https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+2",
+      "https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+3",
+      "https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+4",
     ];
   }
 }

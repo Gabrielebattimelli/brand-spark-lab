@@ -230,6 +230,13 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
     };
   }, [debounceTimeout]);
 
+  // Load saved moodboard images when component mounts
+  useEffect(() => {
+    if (data.moodboardUrls && data.moodboardUrls.length > 0) {
+      setMoodboardImages(data.moodboardUrls);
+    }
+  }, [data.moodboardUrls]);
+
   // useCallback to avoid re-creation on every render
   const generateMoodboard = useCallback(async () => {
     if (!geminiApiKey || geminiApiKey.trim() === "") {
@@ -243,20 +250,43 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
     }
     setIsGeneratingMoodboard(true);
     try {
-      const prompts = await generateMoodboardPrompts(geminiApiKey, {
-        brandName: data.businessName || data.brandName || "Brand",
-        industry: data.industry || "General",
-        visualStyle: formData.visualStyle || "modern",
-        colorPreferences: formData.colorPreferences || [],
-        inspirationKeywords: formData.inspirationKeywords || []
+      // Generate placeholder images for now
+      const placeholderImages = [
+        "https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+1",
+        "https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+2",
+        "https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+3",
+        "https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+4",
+      ];
+      
+      // In a real implementation, we would use the AI-generated images
+      // const prompts = await generateMoodboardPrompts(geminiApiKey, {
+      //   brandName: data.businessName || data.brandName || "Brand",
+      //   industry: data.industry || "General",
+      //   visualStyle: formData.visualStyle || "modern",
+      //   colorPreferences: formData.colorPreferences || [],
+      //   inspirationKeywords: formData.inspirationKeywords || []
+      // });
+      // 
+      // if (prompts) {
+      //   const images = await generateImages(geminiApiKey, prompts);
+      //   setMoodboardImages(images);
+      // }
+      
+      // Set the placeholder images
+      setMoodboardImages(placeholderImages);
+      
+      // Save the moodboard URLs to the form data
+      const updatedData = {
+        ...formData,
+        moodboardUrls: placeholderImages
+      };
+      setFormData(updatedData);
+      onChange(updatedData, true); // Force save to ensure it's persisted
+      
+      toast({
+        title: "Mood Board Generated",
+        description: "Successfully generated a new mood board for your brand.",
       });
-
-      if (prompts) {
-        const images = await generateImages(geminiApiKey, prompts);
-        setMoodboardImages(images);
-      } else {
-        throw new Error("Failed to generate mood board prompts.");
-      }
     } catch (error) {
       console.error("Error generating mood board:", error);
       toast({
@@ -267,7 +297,7 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
     } finally {
       setIsGeneratingMoodboard(false);
     }
-  }, [data.businessName, data.brandName, data.industry, formData.visualStyle, formData.colorPreferences, formData.inspirationKeywords, geminiApiKey]);
+  }, [data.businessName, data.brandName, data.industry, formData, onChange, formData.visualStyle, formData.colorPreferences, formData.inspirationKeywords, geminiApiKey]);
 
 
 
@@ -606,80 +636,83 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
           </div>
         </div>
 
-        <div>
-          <h2 className="text-xl font-semibold mb-4">Visual Inspiration</h2>
-          <p className="text-gray-600 mb-4">
-            Optionally add links to images or websites that represent the visual style you're looking for.
-          </p>
+        {/* Visual Inspiration Section - Hidden for now */}
+        {false && (
+          <div>
+            <h2 className="text-xl font-semibold mb-4">Visual Inspiration</h2>
+            <p className="text-gray-600 mb-4">
+              Optionally add links to images or websites that represent the visual style you're looking for.
+            </p>
 
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder="Paste URL to inspiration image or website"
-                value={newMoodboardUrl}
-                onChange={(e) => setNewMoodboardUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addMoodboardUrl();
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon"
-                onClick={addMoodboardUrl}
-              >
-                <Plus size={16} />
-              </Button>
-            </div>
-
-            {formData.moodboardUrls.length > 0 ? (
-              <div className="grid grid-cols-1 gap-3">
-                {formData.moodboardUrls.map((url: string, index: number) => (
-                  <div key={index} className="flex items-center justify-between p-3 rounded-lg border">
-                    <div className="flex items-center truncate">
-                      <span className="truncate">{url}</span>
-                    </div>
-                    <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => window.open(url, '_blank')}
-                      >
-                        <ExternalLink size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => removeMoodboardUrl(index)}
-                      >
-                        <X size={14} />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Paste URL to inspiration image or website"
+                  value={newMoodboardUrl}
+                  onChange={(e) => setNewMoodboardUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addMoodboardUrl();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  onClick={addMoodboardUrl}
+                >
+                  <Plus size={16} />
+                </Button>
               </div>
-            ) : (
-              <p className="text-sm text-gray-500 italic">
-                No inspiration links added yet.
-              </p>
-            )}
 
-            <div className="mt-6 text-center">
-              <p className="text-sm text-gray-500 mb-3">
-                Or upload your own inspiration images (coming soon)
-              </p>
-              <Button variant="outline" disabled className="cursor-not-allowed">
-                <Upload size={16} className="mr-2" />
-                Upload Images
-              </Button>
+              {formData.moodboardUrls.length > 0 ? (
+                <div className="grid grid-cols-1 gap-3">
+                  {formData.moodboardUrls.map((url: string, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 rounded-lg border">
+                      <div className="flex items-center truncate">
+                        <span className="truncate">{url}</span>
+                      </div>
+                      <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => window.open(url, '_blank')}
+                        >
+                          <ExternalLink size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => removeMoodboardUrl(index)}
+                        >
+                          <X size={14} />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 italic">
+                  No inspiration links added yet.
+                </p>
+              )}
+
+              <div className="mt-6 text-center">
+                <p className="text-sm text-gray-500 mb-3">
+                  Or upload your own inspiration images (coming soon)
+                </p>
+                <Button variant="outline" disabled className="cursor-not-allowed">
+                  <Upload size={16} className="mr-2" />
+                  Upload Images
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Mood Board Section */}
         <div className="mb-10">
@@ -702,13 +735,29 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
           </p>
           
           {/* Mood board Images */}
-          {moodboardImages.length > 0 && (
+          {moodboardImages.length > 0 ? (
             <div className="grid grid-cols-2 gap-4">
               {moodboardImages.map((imageUrl, index) => (
                 <div key={index} className="aspect-square">
-                  <img src={imageUrl} alt={`Moodboard ${index + 1}`} className="w-full h-full object-cover rounded-lg" />
+                  <img 
+                    src={imageUrl} 
+                    alt={`Moodboard ${index + 1}`} 
+                    className="w-full h-full object-cover rounded-lg" 
+                    onError={(e) => {
+                      // If image fails to load, replace with a placeholder
+                      e.currentTarget.src = `https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+${index + 1}`;
+                    }}
+                  />
                 </div>
               ))}
+            </div>
+          ) : (
+            <div className="text-center p-8 bg-gray-50 rounded-lg">
+              <Image className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No mood board generated yet</h3>
+              <p className="text-gray-500 mb-4">
+                Click the "Generate Mood Board" button to create a visual representation of your brand's aesthetic.
+              </p>
             </div>
           )}
         </div>

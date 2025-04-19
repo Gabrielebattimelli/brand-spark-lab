@@ -118,17 +118,17 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { pathname } = useLocation();
   const { projectId } = useParams();
 
+  // Use the project data hook at the component level
+  const { getStepData } = useProjectData(projectId);
+  
   // Function to get project data
   const getProjectData = async () => {
     if (!projectId) return null;
     
     try {
-      const { getStepData } = useProjectData();
       const data = await getStepData('logo' as StepType);
-      console.log('Retrieved project data:', data);
       return data as ProjectData;
     } catch (error) {
-      console.error('Error getting project data:', error);
       return null;
     }
   };
@@ -220,80 +220,64 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   // Initialize generatedLogos with project data if available
   useEffect(() => {
+    // Skip initialization if we already have logos
+    if (generatedLogos.length > 0) {
+      return;
+    }
+    
     const initializeLogos = async () => {
       try {
+        // First, try to get the project data which might contain the selected logo
         const projectData = await getProjectData();
-        if (projectData?.logo || projectData?.aiGenerated?.logo) {
-          const savedLogo = projectData.logo || projectData.aiGenerated.logo;
-          console.log('Initializing generatedLogos with saved logo:', savedLogo);
-          setGeneratedLogos([savedLogo]);
+        
+        // We'll only use this to initialize the selected logo if we can't find it elsewhere
+        const savedLogo = projectData?.logo || (projectData?.aiGenerated && projectData.aiGenerated.logo);
+        
+        // We don't initialize the generatedLogos array here anymore
+        // This is now handled by the LogoGeneration component which loads all logos
+        // We just set the selected logo if it exists
+        if (savedLogo) {
           setSelectedLogo(savedLogo);
         }
       } catch (error) {
-        console.error('Error initializing generatedLogos:', error);
+        // Silent error - just continue
       }
     };
 
     initializeLogos();
-  }, [getProjectData, projectId]);
+  }, [getProjectData, projectId, generatedLogos.length]);
 
   // Set up API key setters that persist to Supabase
   const setGeminiApiKey = (key: string) => {
-    console.log('Setting Gemini API key:', key);
     setGeminiApiKeyState(key);
-    saveSettings({ gemini_api_key: key })
-      .then(result => {
-        console.log('Gemini API key saved successfully:', result);
-      })
-      .catch(error => {
-        console.error('Failed to save Gemini API key:', error);
-      });
+    saveSettings({ gemini_api_key: key }).catch(() => {
+      // Silent error handling
+    });
   };
 
   const setIdeogramApiKey = (key: string) => {
-    console.log('Setting Ideogram API key:', key);
     setIdeogramApiKeyState(key);
-    saveSettings({ ideogram_api_key: key })
-      .then(result => {
-        console.log('Ideogram API key saved successfully:', result);
-      })
-      .catch(error => {
-        console.error('Failed to save Ideogram API key:', error);
-      });
+    saveSettings({ ideogram_api_key: key }).catch(() => {
+      // Silent error handling
+    });
   };
 
   const setClipdropApiKey = (key: string) => {
-    console.log('Setting ClipDrop API key:', key);
     setClipdropApiKeyState(key);
-    saveSettings({ clipdrop_api_key: key })
-      .then(result => {
-        console.log('ClipDrop API key saved successfully:', result);
-      })
-      .catch(error => {
-        console.error('Failed to save ClipDrop API key:', error);
-      });
+    saveSettings({ clipdrop_api_key: key }).catch(() => {
+      // Silent error handling
+    });
   };
 
   // Load API keys from settings when they change
   useEffect(() => {
     if (settings) {
-      console.log('Loading API keys from settings:', settings);
       setGeminiApiKeyState(settings.gemini_api_key || "");
       setIdeogramApiKeyState(settings.ideogram_api_key || "");
       setClipdropApiKeyState(settings.clipdrop_api_key || "");
       setKeysLoaded(true);
     }
   }, [settings]);
-  
-  // Debug log when keys change
-  useEffect(() => {
-    console.log('API keys state updated:', { 
-      geminiApiKey, 
-      ideogramApiKey, 
-      clipdropApiKey,
-      keysLoaded 
-    });
-  }, [geminiApiKey, ideogramApiKey, clipdropApiKey, keysLoaded]);
 
   const value = {
     // API Keys

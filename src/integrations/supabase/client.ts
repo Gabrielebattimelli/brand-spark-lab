@@ -13,7 +13,7 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
   global: {
     headers: {
       Accept: 'application/json',
-      
+      'Content-Type': 'application/json',
     },
   },
   auth: {

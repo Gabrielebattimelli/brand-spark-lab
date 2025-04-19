@@ -48,11 +48,7 @@ function getCacheKey(params: LogoParams): string {
 }
 
 function getFromCache(params: LogoParams): GeneratedLogo[] | null {
-  const key = getCacheKey(params);
-  const cached = logoCache.get(key);
-  if (cached) {
-    return cached;
-  }
+  // Disable caching to ensure new logos are generated each time
   return null;
 }
 
@@ -182,7 +178,6 @@ export async function generateLogoConcepts(
     if (error instanceof LogoGenerationError) {
       throw error;
     }
-    console.error("Error generating logos:", error);
     throw new LogoGenerationError(
       'Failed to generate logos',
       'GENERATION_FAILED'
@@ -307,7 +302,6 @@ export async function regenerateLogoConcepts(
     if (error instanceof LogoGenerationError) {
       throw error;
     }
-    console.error("Error regenerating logos:", error);
     throw new LogoGenerationError(
       'Failed to regenerate logos',
       'REGENERATION_FAILED'
