@@ -10,6 +10,7 @@ import { toast } from "@/components/ui/use-toast";
 import { generateLogoConcepts } from "../../../integrations/ai/logoGeneration";
 import { GeneratedLogo } from "../../../types/logo";
 import { GeneratedColorPalette } from "../../../integrations/ai/colorPalette";
+import { LogoGallery } from "./LogoGallery";
 
 interface LogoGenerationData {
   brandName: string;
@@ -50,10 +51,11 @@ interface LogoGenerationProps {
   onChange: (data: Partial<LogoGenerationData>) => void;
   getAsset?: (type: string) => Promise<any>;
   saveAsset?: (type: string, content: string, metadata?: any) => Promise<any>;
+  getAllLogos?: () => Promise<GeneratedLogo[]>;
   projectId?: string;
 }
 
-export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId }: LogoGenerationProps) => {
+export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, getAllLogos, projectId }: LogoGenerationProps) => {
   const { 
     ideogramApiKey,
     clipdropApiKey,
@@ -74,17 +76,78 @@ export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId 
   useEffect(() => {
     const initializeLogos = async () => {
       try {
-        // Skip if already initialized or no project ID
-        if (initialized || !projectId) {
+        // Skip if already initialized
+        if (initialized) {
           return;
         }
         
-        // Skip if we already have logos in the state
+        // Log warning if no project ID
+        if (!projectId) {
+          console.log(`LogoGeneration: no project ID available, but will continue with initialization`);
+        }
+        
+        // Log the current state of generatedLogos for debugging
+        console.log(`LogoGeneration: initializing with ${generatedLogos.length} logos already in state`);
+        
+        // If we already have logos in the state, just mark as initialized and return
         if (generatedLogos && generatedLogos.length > 0) {
+          console.log(`LogoGeneration: using ${generatedLogos.length} logos from state`);
           setInitialized(true);
           return;
         }
         
+        // Use the new getAllLogos function if available
+        if (getAllLogos) {
+          try {
+            const allLogos = await getAllLogos();
+            
+            if (allLogos && Array.isArray(allLogos)) {
+              console.log(`LogoGeneration: loaded ${allLogos.length} logos from getAllLogos`);
+              
+              // Force a refresh of the logos
+              setGeneratedLogos([]);
+              
+              // Then set the logos
+              setTimeout(() => {
+                setGeneratedLogos(allLogos);
+              }, 0);
+              
+              // Find the selected logo (use the one from project data if available)
+              const selectedLogoFromData = data.logo || (data.aiGenerated && data.aiGenerated.logo);
+              
+              if (selectedLogoFromData) {
+                // Find the matching logo in allLogos
+                const matchingLogo = allLogos.find(logo => logo && logo.id === selectedLogoFromData.id);
+                
+                if (matchingLogo) {
+                  console.log(`LogoGeneration: setting selected logo from allLogos: ${matchingLogo.id}`);
+                  setSelectedLogo(matchingLogo);
+                } else {
+                  console.log(`LogoGeneration: setting selected logo from project data: ${selectedLogoFromData.id}`);
+                  setSelectedLogo(selectedLogoFromData);
+                }
+              } else if (allLogos.length > 0 && allLogos[0]) {
+                // If no selected logo in project data, use the first logo
+                console.log(`LogoGeneration: setting first logo as selected: ${allLogos[0].id}`);
+                setSelectedLogo(allLogos[0]);
+              }
+              
+              // Log success
+              toast({
+                title: "Logos Restored",
+                description: `Successfully restored ${allLogos.length} logo concepts.`,
+                variant: "default",
+              });
+              
+              setInitialized(true);
+              return;
+            }
+          } catch (error) {
+            console.error("Error loading logos with getAllLogos:", error);
+          }
+        }
+        
+        // Fallback to legacy methods if getAllLogos fails or is not available
         let logosLoaded = false;
         let loadedLogos = [];
         let selectedLogoFromAssets = null;
@@ -115,19 +178,19 @@ export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId 
                   logosLoaded = true;
                   
                   // Set the logos in state
-                  setGeneratedLogos(uniqueLogos);
+                  console.log(`LogoGeneration: loaded ${uniqueLogos.length} logos from 'logos' asset`);
+                  // Force a refresh of the logos
+                  setGeneratedLogos([]);
+                  // Then set the logos
+                  setTimeout(() => {
+                    setGeneratedLogos(uniqueLogos);
+                  }, 0);
                   
                   // Set the selected logo if one was found
                   if (selectedLogoFromAssets) {
+                    console.log(`LogoGeneration: setting selected logo from 'logos' asset: ${selectedLogoFromAssets.id}`);
                     setSelectedLogo(selectedLogoFromAssets);
                   }
-                  
-                  // Log success
-                  toast({
-                    title: "Logos Restored",
-                    description: `Successfully restored ${uniqueLogos.length} logo concepts.`,
-                    variant: "default",
-                  });
                 }
               } catch (parseError) {
                 console.error("Error parsing logos asset:", parseError);
@@ -185,7 +248,7 @@ export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId 
     };
 
     initializeLogos();
-  }, [data, getAsset, projectId, initialized, generatedLogos, setGeneratedLogos, setSelectedLogo, onChange]);
+  }, [data, getAsset, getAllLogos, projectId, initialized, generatedLogos, setGeneratedLogos, setSelectedLogo, onChange]);
 
   const handleGenerateLogos = async () => {
     if (!ideogramApiKey && !clipdropApiKey) {
@@ -241,7 +304,13 @@ export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId 
       );
       
       // Set the combined logos
-      setGeneratedLogos(uniqueLogos);
+      console.log(`LogoGeneration: setting ${uniqueLogos.length} logos (${updatedNewLogos.length} new, ${generatedLogos.length} existing)`);
+      // Force a refresh of the logos
+      setGeneratedLogos([]);
+      // Then set the logos
+      setTimeout(() => {
+        setGeneratedLogos(uniqueLogos);
+      }, 0);
       
       // Only set selected logo if none is currently selected
       if (!selectedLogo && updatedNewLogos.length > 0) {
@@ -324,6 +393,8 @@ export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId 
   };
 
   const handleSelectLogo = async (logo: GeneratedLogo) => {
+    console.log(`LogoGeneration: selecting logo ${logo.id}`);
+    
     // Update the selected state for all logos
     const updatedLogos = generatedLogos.map(l => ({
       ...l,
@@ -334,7 +405,9 @@ export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId 
     setGeneratedLogos(updatedLogos);
     setSelectedLogo({...logo, selected: true});
     
-    // Update project data
+    // Update project data with the selected logo
+    // Make sure to include both the direct logo property and the aiGenerated.logo property
+    // This ensures that canProceed will work correctly
     const updatedData = { 
       logo: {...logo, selected: true},
       aiGenerated: {
@@ -343,6 +416,7 @@ export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId 
       }
     };
     
+    console.log(`LogoGeneration: updating project data with selected logo ${logo.id}`);
     onChange(updatedData);
 
     // Save to generated assets when a logo is selected
@@ -390,6 +464,41 @@ export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId 
     }
   };
 
+  // Log the current state for debugging
+  console.log(`LogoGeneration render: ${generatedLogos.length} logos in state, selected logo: ${selectedLogo?.id || 'none'}`);
+  
+  // Force a re-render if we have logos in the AIContext but not in the component state
+  useEffect(() => {
+    if (!initialized && generatedLogos.length > 0) {
+      console.log(`LogoGeneration: found ${generatedLogos.length} logos in AIContext, marking as initialized`);
+      setInitialized(true);
+      
+      // Also save the logos to the database if we have them in the AIContext
+      if (typeof saveAsset === 'function' && projectId) {
+        try {
+          // Save all logos with metadata
+          const allLogosData = {
+            logos: generatedLogos,
+            selectedLogoId: selectedLogo ? selectedLogo.id : (generatedLogos.length > 0 ? generatedLogos[0].id : null),
+            timestamp: Date.now() // Add timestamp for versioning
+          };
+          
+          // Save with project ID in metadata for security
+          saveAsset('logos', JSON.stringify(allLogosData), {
+            projectId: projectId,
+            count: generatedLogos.length
+          }).then(() => {
+            console.log(`LogoGeneration: saved ${generatedLogos.length} logos to database`);
+          }).catch(error => {
+            console.error("Error saving logos:", error);
+          });
+        } catch (error) {
+          console.error("Error preparing logos for save:", error);
+        }
+      }
+    }
+  }, [generatedLogos, initialized, saveAsset, projectId, selectedLogo]);
+  
   return (
     <div className="space-y-8">
       <div className="text-center max-w-3xl mx-auto mb-8">
@@ -433,69 +542,37 @@ export const LogoGeneration = ({ data, onChange, getAsset, saveAsset, projectId 
             </Button>
           </div>
           
-          {!generatedLogos || generatedLogos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 border-2 border-dashed border-gray-200 rounded-lg">
-              <div className="text-center p-6">
-                <Sparkles className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Logo Generated Yet</h3>
-                <p className="text-gray-500 mb-4">
-                  Click the button above to generate logo concepts based on your brand details.
+          <LogoGallery 
+            logos={generatedLogos} 
+            selectedLogo={selectedLogo} 
+            onSelectLogo={handleSelectLogo} 
+          />
+        </CardContent>
+        <CardFooter className="flex flex-col items-start gap-2">
+          {selectedLogo && (
+            <div className="w-full">
+              <p className="text-sm font-medium text-gray-700 mb-2">
+                Selected Logo:
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="w-12 h-12 border rounded overflow-hidden">
+                  <img 
+                    src={selectedLogo.url} 
+                    alt="Selected logo" 
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <p className="text-xs text-gray-500">
+                  ID: {selectedLogo.id}
                 </p>
               </div>
             </div>
-          ) : (
-            <div className="space-y-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">All Generated Logos</h3>
-              <p className="text-gray-500 mb-4">
-                Click on a logo to select it as your brand logo. Generate more logos to add to your collection.
-              </p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {generatedLogos.map((logo, index) => {
-                  // Ensure each logo has an ID
-                  const logoId = logo.id || `logo-fallback-${index}`;
-                  const isSelected = selectedLogo?.id === logoId;
-                  
-                  return (
-                    <div
-                      key={logoId}
-                      className={`
-                        relative border rounded-lg overflow-hidden cursor-pointer transition-all
-                        ${isSelected ? "ring-2 ring-primary" : "hover:border-primary/50"}
-                      `}
-                      onClick={() => handleSelectLogo({...logo, id: logoId})}
-                    >
-                      <div className="bg-white p-4 flex items-center justify-center min-h-[200px]">
-                        <img
-                          src={logo.url}
-                          alt={`Logo concept ${index + 1}`}
-                          className="max-w-full max-h-[250px] object-contain"
-                          loading="lazy"
-                        />
-                      </div>
-                      <div className="absolute top-2 right-2">
-                        {isSelected && (
-                          <div className="bg-primary text-white rounded-full p-1">
-                            <CheckCircle size={16} />
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-2 bg-gray-50 text-xs text-gray-500 border-t">
-                        Generated #{index + 1}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           )}
-        </CardContent>
-        <CardFooter className="flex items-center gap-2">
-          {selectedLogo && (
+          <div className="w-full mt-2">
             <p className="text-xs text-gray-500">
-              Selected logo: {selectedLogo.id}
+              Total logos generated: {generatedLogos.length}
             </p>
-          )}
+          </div>
         </CardFooter>
       </Card>
     </div>

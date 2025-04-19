@@ -206,7 +206,7 @@ export default function BrandWizard() {
   // Initialize hooks
   const { getProject } = useProjects();
   const { getStepData, saveStepData } = useProjectData(projectId);
-  const { getAsset, saveAsset } = useGeneratedAssets(projectId);
+  const { getAsset, saveAsset, getAllLogos } = useGeneratedAssets(projectId);
 
   // Access AI context
   const { 
@@ -298,7 +298,8 @@ export default function BrandWizard() {
           'brand_voice', 
           'color_palette', 
           'logo',
-          'logos' // Add the 'logos' asset (plural) which contains all generated logos
+          'logos', // Add the 'logos' asset (plural) which contains all generated logos
+          'moodboard' // Add the 'moodboard' asset
         ];
 
         const assetPromises = assetTypes.map(async (type) => {
@@ -403,7 +404,13 @@ export default function BrandWizard() {
                       const selectedLogoFromAssets = uniqueLogos.find(logo => logo.id === selectedLogoId) || uniqueLogos[0];
                       
                       // Initialize the generated logos with all saved logos
-                      setGeneratedLogos(uniqueLogos);
+                      console.log(`BrandWizard: loaded ${uniqueLogos.length} logos from 'logos' asset`);
+                      // Force a refresh of the logos
+                      setGeneratedLogos([]);
+                      // Then set the logos
+                      setTimeout(() => {
+                        setGeneratedLogos(uniqueLogos);
+                      }, 0);
                       
                       // Set the selected logo
                       if (selectedLogoFromAssets) {
@@ -474,6 +481,31 @@ export default function BrandWizard() {
                     toast.error('Failed to load logo');
                   }
                   break;
+                case 'moodboard':
+                  try {
+                    // Verify this moodboard belongs to the current project
+                    if (asset.metadata && typeof asset.metadata === 'object' && 'projectId' in asset.metadata) {
+                      const assetProjectId = String(asset.metadata.projectId);
+                      
+                      if (assetProjectId !== projectId) {
+                        // Don't load this moodboard as it belongs to a different project
+                        break;
+                      }
+                    }
+                    
+                    const moodboardData = JSON.parse(content);
+                    if (moodboardData && Array.isArray(moodboardData.images) && moodboardData.images.length > 0) {
+                      setFormData(prev => ({
+                        ...prev,
+                        moodboardUrls: moodboardData.images
+                      }));
+                      setStepsValidity(prev => ({ ...prev, "aesthetics": true }));
+                    }
+                  } catch (err) {
+                    // Silent error with toast
+                    toast.error('Failed to load mood board');
+                  }
+                  break;
               }
             }
           } catch (error) {
@@ -498,13 +530,29 @@ export default function BrandWizard() {
   }, [projectId, getProject, getStepData, getAsset, navigate]);
 
   const updateFormData = useCallback(async (step: string, data: Partial<FormData>, forceSave: boolean = false) => {
+    // Log the update for debugging
+    if (step === 'logo') {
+      const hasLogo = !!(data.logo || (data.aiGenerated && data.aiGenerated.logo));
+      console.log(`updateFormData for logo step:`, {
+        hasLogo: hasLogo,
+        logoId: data.logo?.id || data.aiGenerated?.logo?.id
+      });
+      
+      // Explicitly set the logo step as valid if a logo is selected
+      if (hasLogo) {
+        setStepsValidity(prev => ({
+          ...prev,
+          'logo': true
+        }));
+      }
+    }
+    
     // Update form data in state
     setFormData((prev) => ({
       ...prev,
       ...data
     }));
     
-
     setStepsValidity(prev => ({
       ...prev,
       [step]: true
@@ -542,8 +590,13 @@ export default function BrandWizard() {
         // Convert the data to the correct format for the current step
         let stepDataToSave: any = { ...stepData }; // Spread operator to create a copy
         if (currentStep === 'logo') {
+          const logoToSave = formData.logo || formData.aiGenerated?.logo;
+          console.log(`handleNext for logo step: saving logo`, {
+            hasLogo: !!logoToSave,
+            logoId: logoToSave?.id
+          });
           stepDataToSave = {
-            logo: formData.logo || formData.aiGenerated?.logo
+            logo: logoToSave
           };
         }
 
@@ -758,7 +811,15 @@ export default function BrandWizard() {
       case 'competition':
         return formData.competitors.length > 0 && formData.differentiators.length > 0;
       case 'aesthetics':
-        return !!formData.visualStyle ;
+        return !!formData.visualStyle;
+      case 'logo':
+        // Allow proceeding if there's a selected logo in either formData.logo or formData.aiGenerated.logo
+        const hasLogo = !!formData.logo || !!(formData.aiGenerated && formData.aiGenerated.logo);
+        console.log(`canProceed for logo step: ${hasLogo}`, {
+          directLogo: !!formData.logo,
+          aiGeneratedLogo: !!(formData.aiGenerated && formData.aiGenerated.logo)
+        });
+        return hasLogo;
       case 'results':
         return true;
       default:
@@ -828,6 +889,8 @@ export default function BrandWizard() {
           <Aesthetics
             data={formData}
             onChange={(data, forceSave = false) => updateFormData('aesthetics', data, forceSave)}
+            saveAsset={saveAsset}
+            projectId={projectId}
           />
         );
       case 'logo':
@@ -837,6 +900,7 @@ export default function BrandWizard() {
             onChange={(data) => updateFormData('logo', data)}
             getAsset={getAsset}
             saveAsset={saveAsset}
+            getAllLogos={getAllLogos}
             projectId={projectId}
           />
         );
@@ -846,6 +910,25 @@ export default function BrandWizard() {
         return null;
     }
   }, [currentStep, formData, isLoading, updateFormData]);
+
+  // Check if project ID is available
+  if (!projectId) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 md:p-8 max-w-md w-full">
+          <h1 className="text-2xl font-bold text-center mb-4">Project Not Found</h1>
+          <p className="text-gray-600 mb-6 text-center">
+            The project you're looking for could not be found. Please return to your projects and try again.
+          </p>
+          <div className="flex justify-center">
+            <Button onClick={() => navigate('/projects')}>
+              Go to Projects
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <WizardLayout

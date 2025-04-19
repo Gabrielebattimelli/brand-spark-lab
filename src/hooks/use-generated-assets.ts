@@ -3,8 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Json } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
+import { GeneratedLogo } from '@/types/logo';
 
-export type AssetType = 'logo' | 'color_palette' | 'color_palette_suggestions' | 'color_palette_preferences' | 'brand_name' | 'brand_name_suggestions' | 'mission_statement' | 'vision_statement' | 'value_proposition' | 'brand_essence' | 'brand_voice';
+export type AssetType = 'logo' | 'logos' | 'color_palette' | 'color_palette_suggestions' | 'color_palette_preferences' | 'brand_name' | 'brand_name_suggestions' | 'mission_statement' | 'vision_statement' | 'value_proposition' | 'brand_essence' | 'brand_voice' | 'moodboard';
 
 export interface GeneratedAsset {
   id: string;
@@ -31,6 +32,20 @@ const ASSET_VALIDATORS: Record<AssetType, (content: string) => boolean> = {
         );
       }
       
+      return false;
+    } catch {
+      return false;
+    }
+  },
+  logos: (content) => {
+    try {
+      const data = JSON.parse(content);
+      // Validate the logos array
+      if (data.logos && Array.isArray(data.logos)) {
+        return data.logos.every(logo => 
+          typeof logo === 'object' && typeof logo.url === 'string'
+        );
+      }
       return false;
     } catch {
       return false;
@@ -90,6 +105,15 @@ const ASSET_VALIDATORS: Record<AssetType, (content: string) => boolean> = {
       return false;
     }
   },
+  moodboard: (content) => {
+    try {
+      const data = JSON.parse(content);
+      return Array.isArray(data.images) && 
+             data.images.every((url: any) => typeof url === 'string');
+    } catch {
+      return false;
+    }
+  },
   brand_name: (content) => typeof content === 'string' && content.length > 0,
   mission_statement: (content) => typeof content === 'string' && content.length > 0,
   vision_statement: (content) => typeof content === 'string' && content.length > 0,
@@ -113,7 +137,7 @@ export const useGeneratedAssets = (projectId?: string) => {
 
   const getAssets = useCallback(async (type?: AssetType): Promise<GeneratedAsset[]> => {
     if (!user || !projectId) {
-      toast.error('Authentication required');
+      console.error('Authentication required for getAssets');
       return [];
     }
 
@@ -121,6 +145,8 @@ export const useGeneratedAssets = (projectId?: string) => {
     setError(null);
 
     try {
+      console.log(`getAssets: Fetching assets${type ? ` of type ${type}` : ''} for project ${projectId} and user ${user.id}`);
+      
       // First, verify the project belongs to the user
       const { data: project, error: projectError } = await supabase
         .from('projects')
@@ -129,43 +155,51 @@ export const useGeneratedAssets = (projectId?: string) => {
         .eq('user_id', user.id)
         .single();
 
-      if (projectError) {
-        toast.error('Project not found or access denied');
-        throw new Error('Project not found or access denied');
+      if (projectError || !project) {
+        console.error(`Project verification failed: ${projectError?.message || 'Project not found'}`);
+        return [];
       }
 
-      // Then get the assets
+      console.log(`getAssets: Project ${projectId} verified for user ${user.id}`);
+
+      let assets: any[] = [];
+
+      // Use a direct query to get assets
       let query = supabase
         .from('generated_assets')
         .select('*')
         .eq('project_id', projectId);
-
+        
+      // If type is provided, filter by it
       if (type) {
         query = query.eq('type', type);
       }
+      
+      const { data: queryAssets, error: queryError } = await query
+        .order('created_at', { ascending: false });
 
-      const { data, error } = await query.order('created_at', { ascending: false });
-
-      if (error) {
-        toast.error(error.message);
-        throw new Error(error.message);
+      if (queryError) {
+        console.error(`Error fetching assets: ${queryError.message}`);
+        return [];
       }
 
-      // Validate assets
-      const validAssets = (data || [])
+      assets = queryAssets || [];
+
+      console.log(`getAssets: Found ${assets.length} assets`);
+
+      // Validate and type the assets
+      const validAssets = assets
         .map(asset => ({
           ...asset,
           type: asset.type as AssetType
         }))
         .filter(asset => validateAsset(asset.type, asset.content));
 
-      // Silently filter out invalid assets
-
       return validAssets;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch assets';
       setError(message);
-      toast.error(message);
+      console.error(`getAssets error: ${message}`);
       return [];
     } finally {
       setLoading(false);
@@ -174,7 +208,7 @@ export const useGeneratedAssets = (projectId?: string) => {
 
   const getAsset = useCallback(async (type: AssetType): Promise<GeneratedAsset | null> => {
     if (!user || !projectId) {
-      toast.error('Authentication required');
+      console.error('Authentication required for getAsset');
       return null;
     }
 
@@ -182,6 +216,8 @@ export const useGeneratedAssets = (projectId?: string) => {
     setError(null);
 
     try {
+      console.log(`getAsset: Fetching asset of type ${type} for project ${projectId} and user ${user.id}`);
+      
       // First, verify the project belongs to the user
       const { data: project, error: projectError } = await supabase
         .from('projects')
@@ -190,37 +226,43 @@ export const useGeneratedAssets = (projectId?: string) => {
         .eq('user_id', user.id)
         .single();
 
-      if (projectError) {
-        toast.error('Project not found or access denied');
-        throw new Error('Project not found or access denied');
+      if (projectError || !project) {
+        console.error(`Project verification failed: ${projectError?.message || 'Project not found'}`);
+        return null;
       }
 
-      // Then get the latest asset of the specified type
-      const { data, error } = await supabase
+      console.log(`getAsset: Project ${projectId} verified for user ${user.id}`);
+
+      // Use a direct query instead of the stored procedure
+      const { data: assets, error: assetsError } = await supabase
         .from('generated_assets')
         .select('*')
         .eq('project_id', projectId)
         .eq('type', type)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .order('created_at', { ascending: false });
 
-      if (error) {
-        toast.error(error.message);
-        throw new Error(error.message);
-      }
-
-      if (!data) {
+      if (assetsError) {
+        console.error(`Error fetching asset: ${assetsError.message}`);
         return null;
       }
 
+      console.log(`getAsset: Found ${assets?.length || 0} assets of type ${type}`);
+
+      // Get the latest asset
+      if (!assets || assets.length === 0) {
+        return null;
+      }
+
+      const latestAsset = assets[0];
+
       // Validate the asset
       const typedData = {
-        ...data,
-        type: data.type as AssetType
+        ...latestAsset,
+        type: latestAsset.type as AssetType
       };
 
       if (!validateAsset(typedData.type, typedData.content)) {
+        console.error(`Asset validation failed for type ${type}`);
         return null;
       }
 
@@ -228,7 +270,7 @@ export const useGeneratedAssets = (projectId?: string) => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch asset';
       setError(message);
-      toast.error(message);
+      console.error(`getAsset error: ${message}`);
       return null;
     } finally {
       setLoading(false);
@@ -361,12 +403,119 @@ export const useGeneratedAssets = (projectId?: string) => {
     }
   }, [user, projectId]);
 
+  // Special function to get all logos for a project
+  const getAllLogos = useCallback(async (): Promise<GeneratedLogo[]> => {
+    if (!user) {
+      console.error('Authentication required for getAllLogos');
+      return [];
+    }
+    
+    if (!projectId) {
+      console.error('Project ID is required for getAllLogos');
+      return [];
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      console.log(`getAllLogos: Fetching logos for project ${projectId} and user ${user.id}`);
+      
+      // First, verify the project belongs to the user
+      const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('id', projectId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (projectError || !project) {
+        console.error(`Project verification failed: ${projectError?.message || 'Project not found'}`);
+        toast.error('Project not found or access denied');
+        return [];
+      }
+
+      console.log(`getAllLogos: Project ${projectId} verified for user ${user.id}`);
+
+      // Use a direct query instead of the stored procedure
+      const { data: logosAssets, error: logosError } = await supabase
+        .from('generated_assets')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('type', 'logos')
+        .order('created_at', { ascending: false });
+
+      if (logosError) {
+        console.error(`Error fetching logos assets: ${logosError.message}`);
+        return [];
+      }
+
+      console.log(`getAllLogos: Found ${logosAssets?.length || 0} logos assets`);
+
+      // If we have a logos asset, parse it
+      if (logosAssets && logosAssets.length > 0 && logosAssets[0].content) {
+        try {
+          const logosData = JSON.parse(logosAssets[0].content);
+          if (logosData && logosData.logos && Array.isArray(logosData.logos)) {
+            console.log(`getAllLogos: Successfully parsed logos asset with ${logosData.logos.length} logos`);
+            // Ensure each logo has a unique ID
+            return logosData.logos.map((logo, index) => ({
+              ...logo,
+              id: logo.id || `logo-restored-${index}`
+            }));
+          }
+        } catch (parseError) {
+          console.error(`Error parsing logos asset: ${parseError}`);
+        }
+      }
+
+      // If no logos asset or parsing failed, try to get single logo
+      const { data: logoAssets, error: logoError } = await supabase
+        .from('generated_assets')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('type', 'logo')
+        .order('created_at', { ascending: false });
+
+      if (logoError) {
+        console.error(`Error fetching logo assets: ${logoError.message}`);
+        return [];
+      }
+
+      console.log(`getAllLogos: Found ${logoAssets?.length || 0} logo assets`);
+
+      // If we have a logo asset, parse it
+      if (logoAssets && logoAssets.length > 0 && logoAssets[0].content) {
+        try {
+          const logoData = JSON.parse(logoAssets[0].content);
+          if (typeof logoData === 'object' && typeof logoData.url === 'string') {
+            console.log(`getAllLogos: Successfully parsed single logo asset`);
+            return [logoData];
+          }
+        } catch (parseError) {
+          console.error(`Error parsing logo asset: ${parseError}`);
+        }
+      }
+
+      console.log(`getAllLogos: No logos found for project ${projectId}`);
+      return [];
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch logos';
+      setError(message);
+      console.error(`getAllLogos error: ${message}`);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, [user, projectId]);
+
   return {
     loading,
     error,
     getAssets,
     getAsset,
     saveAsset,
-    deleteAsset
+    deleteAsset,
+    getAllLogos
   };
 };

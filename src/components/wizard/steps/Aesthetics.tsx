@@ -11,13 +11,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { useAI } from "@/contexts/AIContext";
 import { generateColorPalettes, generateDefaultPalettes, ColorPaletteGenerationParams, GeneratedColorPalette } from "@/integrations/ai/colorPalette";
 import { toast } from "@/components/ui/use-toast";
+import { useGeneratedAssets } from "@/hooks/use-generated-assets";
 
 import { FormData } from '@/pages/projects/BrandWizard';
 
-import { generateMoodboardPrompts, generateImages } from "@/integrations/ai/moodboard";
+import { generateMoodboard as generateMoodboardAPI, GeneratedMoodboard } from "@/integrations/ai/moodboard";
 interface AestheticsProps {
   data: FormData;
   onChange: (data: Partial<FormData>, forceSave?: boolean) => void;
+  saveAsset?: (type: string, content: string, metadata?: any) => Promise<any>;
+  projectId?: string;
 }
 
 const visualStyles = [
@@ -85,13 +88,21 @@ const colorOptions = [
   "Navy", "Burgundy", "Mint", "Coral", "Lavender"
 ];
 
-export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
-  const { geminiApiKey } = useAI();
-  const { projectId } = useParams<{ projectId: string }>();
-  if (!projectId) {
+export const Aesthetics = ({ data, onChange, saveAsset, projectId }: AestheticsProps) => {
+  try {
+  console.log('Aesthetics component props:', { data, onChange: !!onChange, saveAsset: !!saveAsset, projectId });
+  
+  const { projectId: routeProjectId } = useParams<{ projectId: string }>();
+  // Use the projectId from props if available, otherwise use the one from the route
+  const effectiveProjectId = projectId || routeProjectId;
+  
+  console.log('Effective Project ID:', effectiveProjectId);
+  
+  if (!effectiveProjectId) {
     console.error('Project ID is required in Aesthetics component');
     return null;
   }
+  
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<FormData>>({
     visualStyle: data.visualStyle || "",
@@ -100,7 +111,6 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
     moodboardUrls: data.moodboardUrls || [],    
     aiGenerated: data.aiGenerated || {}
   });
-  
   // Track whether preferences have been loaded from assets storage
   const [prefLoadedFromAssets, setPrefLoadedFromAssets] = useState(false);
 
@@ -230,58 +240,136 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
     };
   }, [debounceTimeout]);
 
-  // Load saved moodboard images when component mounts
-  useEffect(() => {
-    if (data.moodboardUrls && data.moodboardUrls.length > 0) {
-      setMoodboardImages(data.moodboardUrls);
+  // Get API keys from the AIContext
+  const { geminiApiKey, ideogramApiKey, clipdropApiKey } = useAI();
+  
+  // If saveAsset is not provided as a prop, get it from the hook
+  const { saveAsset: hookSaveAsset } = useGeneratedAssets(effectiveProjectId);
+  // Use the saveAsset from props if available, otherwise use the one from the hook
+  const effectiveSaveAsset = saveAsset || hookSaveAsset;
+  
+  console.log('Save Asset Functions:', { 
+    propSaveAsset: typeof saveAsset === 'function', 
+    hookSaveAsset: typeof hookSaveAsset === 'function',
+    effectiveSaveAsset: typeof effectiveSaveAsset === 'function'
+  });
+  
+  // Load mood board function - simplified to just use the data from props
+  const loadMoodboard = useCallback(async () => {
+    try {
+      // Check if we have moodboard URLs in the form data
+      if (data.moodboardUrls && data.moodboardUrls.length > 0) {
+        console.log("Loading mood board from form data:", data.moodboardUrls);
+        setMoodboardImages(data.moodboardUrls);
+      }
+    } catch (error) {
+      console.error("Error loading mood board:", error);
     }
   }, [data.moodboardUrls]);
+  
+  // Load saved moodboard images when component mounts
+  useEffect(() => {
+    loadMoodboard();
+  }, [loadMoodboard]);
 
   // useCallback to avoid re-creation on every render
   const generateMoodboard = useCallback(async () => {
+    console.log('generateMoodboard called');
+    // We need either a Gemini API key for prompts or an image generation API key
+    
     if (!geminiApiKey || geminiApiKey.trim() === "") {
-      setError("Gemini API key is required to generate mood board. Please set your API key in the settings.");
+      setError("Gemini API key is required to generate mood board prompts. Please set your API key in the settings.");
       toast({
         title: "API Key Missing",
-        description: "Please set your Gemini API key in the settings to generate the mood board.",
+        description: "Please set your Gemini API key in the settings to generate the mood board prompts.",
         variant: "destructive",
       });
       return;
     }
+  
+    // Check if we have either Ideogram or Clipdrop API key
+    if ((!ideogramApiKey || ideogramApiKey.trim() === "") && 
+        (!clipdropApiKey || clipdropApiKey.trim() === "")) {
+      setError("Either Ideogram or Clipdrop API key is required to generate mood board images. Please set your API key in the settings.");
+      toast({
+        title: "API Key Missing",
+        description: "Please set either your Ideogram or Clipdrop API key in the settings to generate the mood board images.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Determine which image generation API to use
+    const imageApiKey = ideogramApiKey && ideogramApiKey.trim() !== "" 
+      ? ideogramApiKey 
+      : clipdropApiKey;
+    
+    if (!effectiveProjectId) {
+      setError("Project ID is required to generate mood board.");
+      toast({
+        title: "Project ID Missing",
+        description: "Project ID is required to generate the mood board.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setIsGeneratingMoodboard(true);
+    
     try {
-      // Generate placeholder images for now
-      const placeholderImages = [
-        "https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+1",
-        "https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+2",
-        "https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+3",
-        "https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+4",
-      ];
+      console.log("Generating mood board for project:", effectiveProjectId);
       
-      // In a real implementation, we would use the AI-generated images
-      // const prompts = await generateMoodboardPrompts(geminiApiKey, {
-      //   brandName: data.businessName || data.brandName || "Brand",
-      //   industry: data.industry || "General",
-      //   visualStyle: formData.visualStyle || "modern",
-      //   colorPreferences: formData.colorPreferences || [],
-      //   inspirationKeywords: formData.inspirationKeywords || []
-      // });
-      // 
-      // if (prompts) {
-      //   const images = await generateImages(geminiApiKey, prompts);
-      //   setMoodboardImages(images);
-      // }
+      // Generate the mood board using the new function
+      // We use Gemini API for prompts and Ideogram/Clipdrop for images
+      const moodboard = await generateMoodboardAPI(
+        geminiApiKey, // For generating prompts
+        {
+          brandName: data.businessName || data.brandName || "Brand",
+          industry: data.industry || "General",
+          visualStyle: formData.visualStyle || "modern",
+          colorPreferences: formData.colorPreferences || [],
+          inspirationKeywords: formData.inspirationKeywords || []
+        },
+        imageApiKey // For generating images
+      );
       
-      // Set the placeholder images
-      setMoodboardImages(placeholderImages);
+      console.log("Generated mood board:", moodboard);
       
-      // Save the moodboard URLs to the form data
+      // Set the mood board images in the state
+      setMoodboardImages(moodboard.images);
+      
+      // Save the mood board images to the form data
       const updatedData = {
         ...formData,
-        moodboardUrls: placeholderImages
+        moodboardUrls: moodboard.images
       };
       setFormData(updatedData);
-      onChange(updatedData, true); // Force save to ensure it's persisted
+      
+      // Save the mood board to the database
+      try {
+        // Check if effectiveSaveAsset is available
+        if (typeof effectiveSaveAsset === 'function') {
+          // Save the mood board as a generated asset
+          await effectiveSaveAsset('moodboard', JSON.stringify({
+            images: moodboard.images,
+            prompts: moodboard.prompts,
+            timestamp: moodboard.timestamp
+          }), {
+            projectId: effectiveProjectId,
+            count: moodboard.images.length
+          });
+          
+          console.log("Mood board saved to database");
+        } else {
+          // Just log a warning if saveAsset is not available
+          console.warn("saveAsset function not available - mood board will not be saved to database");
+        }
+      } catch (saveError) {
+        console.error("Error saving mood board to database:", saveError);
+      }
+      
+      // Force save to ensure the mood board URLs are persisted
+      onChange(updatedData, true);
       
       toast({
         title: "Mood Board Generated",
@@ -289,6 +377,7 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
       });
     } catch (error) {
       console.error("Error generating mood board:", error);
+      setError(`Error generating mood board: ${error instanceof Error ? error.message : 'Unknown error'}`);
       toast({
         title: "Mood Board Generation Failed",
         description: "An error occurred while generating the mood board.",
@@ -297,13 +386,18 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
     } finally {
       setIsGeneratingMoodboard(false);
     }
-  }, [data.businessName, data.brandName, data.industry, formData, onChange, formData.visualStyle, formData.colorPreferences, formData.inspirationKeywords, geminiApiKey]);
+  }, [data.businessName, data.brandName, data.industry, formData, onChange, formData.visualStyle, formData.colorPreferences, formData.inspirationKeywords, geminiApiKey, ideogramApiKey, clipdropApiKey, effectiveProjectId, effectiveSaveAsset]);
 
 
 
   // Only generate palettes when the button is clicked
   const handleGeneratePalettes = () => {
     regeneratePalettes();
+  };
+  
+  // Handle mood board generation
+  const handleGenerateMoodboard = () => {
+    generateMoodboard();
   };
 
   const handleVisualStyleChange = (value: string) => {
@@ -720,7 +814,7 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold">Mood Board</h2>
             <Button
-                onClick={generateMoodboard}
+                onClick={handleGenerateMoodboard}
                 disabled={isGeneratingMoodboard}
               >
                 {isGeneratingMoodboard ? (
@@ -744,8 +838,12 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
                     alt={`Moodboard ${index + 1}`} 
                     className="w-full h-full object-cover rounded-lg" 
                     onError={(e) => {
+                      console.error(`Failed to load image: ${imageUrl}`);
                       // If image fails to load, replace with a placeholder
                       e.currentTarget.src = `https://placehold.co/600x600/e2e8f0/64748b?text=Moodboard+Image+${index + 1}`;
+                    }}
+                    onLoad={() => {
+                      console.log(`Successfully loaded image: ${imageUrl}`);
                     }}
                   />
                 </div>
@@ -764,4 +862,18 @@ export const Aesthetics = ({ data, onChange }: AestheticsProps) => {
       </div>
     </div>
   );
+  } catch (error) {
+    console.error('Error rendering Aesthetics component:', error);
+    return (
+      <div className="p-8 bg-white rounded-lg shadow">
+        <h2 className="text-xl font-bold text-red-600 mb-4">Error Rendering Component</h2>
+        <p className="text-gray-700 mb-4">
+          There was an error rendering the Aesthetics component. Please check the console for more details.
+        </p>
+        <pre className="bg-gray-100 p-4 rounded overflow-auto max-h-60">
+          {error instanceof Error ? error.message : 'Unknown error'}
+        </pre>
+      </div>
+    );
+  }
 };
